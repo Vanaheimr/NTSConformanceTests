@@ -1,0 +1,25 @@
+<Project>
+
+  <!-- Shared settings for all NTSConformance/NTSInterop projects.
+       Deliberately NOT a root-level Directory.Build.props: a file at the
+       repository root would also apply to the Hermod/Norn/Styx submodule builds. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <AnalysisLevel>latest</AnalysisLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Hermod declares its own IPAddress/IPSocket types in the same namespace it
+         exports IPPort from, so any file using both Hermod and System.Net hits CS0104.
+         Alias the BCL types once here: throughout this suite the unqualified names
+         mean the BCL ones, and Hermod's are written out in full where needed. -->
+    <Using Include="System.Net.IPAddress" Alias="IPAddress" />
+    <Using Include="System.Net.IPEndPoint" Alias="IPEndPoint" />
+  </ItemGroup>
+
+</Project>

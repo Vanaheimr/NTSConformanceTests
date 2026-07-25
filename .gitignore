@@ -1,0 +1,13 @@
+bin/
+obj/
+TestResults/
+*.user
+
+# Norn's NTSServer persists rotating cookie master keys to this file when
+# MasterKeysFilePath is left at its default. Fixtures pass null, but a stray
+# run of the library's own examples can still drop one here.
+masterKeys.json
+
+# chronyd/ntpdig scratch output written by the WSL interop fixtures.
+fixtures/chrony/*.log
+fixtures/chrony/generated/

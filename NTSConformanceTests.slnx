@@ -1,0 +1,28 @@
+<Solution>
+  <Folder Name="/conformance/">
+    <Project Path="conformance/NTSConformance.Client.Tests/NTSConformance.Client.Tests.csproj" />
+    <Project Path="conformance/NTSConformance.Cookies.Tests/NTSConformance.Cookies.Tests.csproj" />
+    <Project Path="conformance/NTSConformance.Crypto.Tests/NTSConformance.Crypto.Tests.csproj" />
+    <Project Path="conformance/NTSConformance.NTSKE.Tests/NTSConformance.NTSKE.Tests.csproj" />
+    <Project Path="conformance/NTSConformance.Server.Tests/NTSConformance.Server.Tests.csproj" />
+    <Project Path="conformance/NTSConformance.WireFormat.Tests/NTSConformance.WireFormat.Tests.csproj" />
+  </Folder>
+  <Folder Name="/interop/">
+    <Project Path="interop/NTSInterop.LinuxTools.Tests/NTSInterop.LinuxTools.Tests.csproj" />
+    <Project Path="interop/NTSInterop.PublicServers.Tests/NTSInterop.PublicServers.Tests.csproj" />
+  </Folder>
+  <Folder Name="/libs/" />
+  <Folder Name="/libs/Hermod/">
+    <Project Path="libs/Hermod/Hermod/Hermod.csproj" />
+  </Folder>
+  <Folder Name="/libs/Norn/">
+    <Project Path="libs/Norn/Norn/Norn.csproj" />
+    <Project Path="libs/Norn/NornTests/NornTests.csproj" />
+  </Folder>
+  <Folder Name="/libs/Styx/">
+    <Project Path="libs/Styx/Styx/Styx.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/NTSConformance.Core/NTSConformance.Core.csproj" />
+  </Folder>
+</Solution>
