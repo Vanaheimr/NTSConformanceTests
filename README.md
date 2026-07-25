@@ -25,18 +25,25 @@ makes the negative tests possible at all.
 
 ## Results
 
-The suite found **16 RFC deviations**, including one critical: NTS cookies were neither
+The suite found **17 RFC deviations**, including one critical: NTS cookies were neither
 encrypted nor authenticated, exposing both session keys on the wire and allowing any forged
-cookie to be accepted. Fourteen are fixed in `libs/Norn`; two remain open, each pinned by a
-deliberately failing test.
+cookie to be accepted. All seventeen are now fixed in `libs/Norn`, each with a test that
+failed first and now guards against regression.
 
-Verified state: **234 tests green** in the hermetic gate, and four deliberately red across
-the two open findings. Every finding — fixed or open — has a test.
+Verified state: **243 tests green** in the hermetic gate, nothing red, and nothing left tagged
+`KnownIssue`.
+
+Two of the seventeen were reachable only from outside Norn, and one was caused by an earlier fix
+in this same effort — an NTS NAK that also caught every plain NTP request, making the server
+unusable to any client not using NTS. That one is worth reading: see F17 in
+[FINDINGS.md](FINDINGS.md).
 
 See **[FINDINGS.md](FINDINGS.md)** for each one with chapter and verse.
 
-Interoperability is confirmed against **chronyd 4.6.1** (full NTS-KE and authenticated
-queries) and against **Cloudflare** and **PTB** with certificate validation switched on.
+Interoperability is confirmed in both directions against **chronyd 4.6.1** — Norn's client
+against chronyd's NTS server, and chronyd as a client taking a real measurement from Norn's
+server — plus **GnuTLS** against the NTS-KE endpoint, and **Cloudflare** and **PTB** with
+certificate validation switched on.
 
 ## Layout
 
@@ -72,7 +79,8 @@ Everything that needs no network and no WSL — this is the gate, and it must st
 dotnet test NTSConformanceTests.slnx --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
 ```
 
-Add the open deviations, which are expected to fail:
+Include anything tagged `KnownIssue`. Nothing is at present, so this currently matches the run
+above; it is how an open deviation would be exercised once one is recorded:
 
 ```bash
 dotnet test NTSConformanceTests.slnx --filter "TestCategory!=Online&TestCategory!=WSL"
@@ -104,7 +112,7 @@ dotnet test conformance/NTSConformance.Cookies.Tests/NTSConformance.Cookies.Test
 | `WSL` | Needs WSL with chrony / ntpsec / gnutls installed |
 | `Loopback` | Drives a real in-process Norn server over loopback |
 | `Slow` | Runs longer than about five seconds |
-| `KnownIssue` | Pins an RFC requirement Norn currently violates — see [FINDINGS.md](FINDINGS.md) |
+| `KnownIssue` | Pins an RFC requirement Norn violates — currently none; see [FINDINGS.md](FINDINGS.md) |
 
 Tests whose prerequisites are missing call `Assert.Ignore` with the command needed to
 satisfy them, rather than failing.

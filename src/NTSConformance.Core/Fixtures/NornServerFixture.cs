@@ -100,6 +100,11 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                  => TLSValidationResult.Success());
 
 
+    /// <summary>The measured system clock resolution, for diagnostics.</summary>
+    public static String DescribeClockResolution()
+        => $"{NTSServer.SystemClockResolution.TotalMilliseconds:F4} ms";
+
+
     public async ValueTask DisposeAsync()
     {
         try

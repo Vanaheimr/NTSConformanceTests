@@ -61,12 +61,12 @@ public class TimestampTests
                         Is.EqualTo(RawNtpTimestamp.Seconds(reference)),
                         $"the seconds field for {instant:O}");
 
-            // The fraction may differ in the low bits: Norn routes it through a Double.
-            var fractionDelta = Math.Abs((Int64) RawNtpTimestamp.Fraction(norn) -
-                                         (Int64) RawNtpTimestamp.Fraction(reference));
-
-            Assert.That(fractionDelta, Is.LessThan(4096),
-                        $"the fraction for {instant:O} should agree to well under a microsecond");
+            // Exact, not approximate: both sides now compute the fraction in integers. Routing
+            // it through a Double, as Norn used to, threw away everything below about a
+            // microsecond in a format that resolves to roughly 233 ps.
+            Assert.That(RawNtpTimestamp.Fraction(norn),
+                        Is.EqualTo(RawNtpTimestamp.Fraction(reference)),
+                        $"the fraction for {instant:O}");
 
         }
 
@@ -160,15 +160,15 @@ public class TimestampTests
 
 
     /// <summary>
-    /// F10 — Norn's <c>NTPTimestampToDateTime</c> has no era parameter: it always adds the
-    /// second count to 1900, so every timestamp generated after the 2036 rollover decodes
-    /// as a date in the early 1900s.
+    /// F10 — RFC 5905 § 6: the wire carries only the low 32 bits of the second count, so the
+    /// era has to be recovered from context. Norn used to add that count to 1900
+    /// unconditionally, decoding every post-2036 timestamp as a date in the early 1900s; it now
+    /// picks the era that places the timestamp nearest the expected instant.
     ///
-    /// This is not yet a live defect — it becomes one on 2036-02-07 — but it is a wire-format
-    /// limitation the RFC explicitly addresses, so the suite records it rather than waiting.
+    /// Not a live defect until 2036-02-07, but the ambiguity is real today and the RFC
+    /// addresses it explicitly.
     /// </summary>
     [Test]
-    [Category(TestCategories.KnownIssue)]
     public void Norn_HandlesTheEra2036Rollover()
     {
 

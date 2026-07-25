@@ -168,8 +168,11 @@ public static class TestEnvironment
             var       port     = ((IPEndPoint) listener.Client.LocalEndPoint!).Port;
             var       received = listener.ReceiveAsync();
 
-            // Bash's /dev/udp does not need netcat to be installed.
-            var send = Wsl.Run($"printf 'probe' > /dev/udp/{hostAddress}/{port}", TimeSpan.FromSeconds(10));
+            // /dev/udp is a bash feature and must be invoked through bash explicitly: Wsl.Run
+            // uses sh, which is dash on Debian, and there the redirect just fails. Getting this
+            // wrong makes the probe report a blocked network path when nothing is blocked.
+            var send = Wsl.Run($"timeout 5 bash -c 'printf probe > /dev/udp/{hostAddress}/{port}'",
+                               TimeSpan.FromSeconds(15));
 
             if (!send.Success)
             {

@@ -22,14 +22,15 @@ default gate. Every finding has a test.
 | F6 | high | Session keys written to the debug log; SIV compared in variable time | 7384 §5.7 | fixed |
 | F7 | high | Malformed extension fields accepted, or thrown on | 7822 §7.5.1.4 | fixed |
 | F8 | low | `AES_SIV.Pad` read past its buffer on a full block | 5297 §2.1 | fixed |
-| F9 | medium | Server leaves reference id, reference timestamp and root dispersion unset | 5905 §7.3 | open |
-| F10 | low | No era handling; timestamps break at the 2036 rollover | 5905 §6 | open |
+| F9 | medium | Server left reference id, reference timestamp and root dispersion unset | 5905 §7.3 | fixed |
+| F10 | low | No era handling; timestamps broke at the 2036 rollover | 5905 §6 | fixed |
 | F11 | low | `S2V` mis-handled an empty plaintext with no associated data | 5297 §2.4, §2.6 | fixed |
 | F12 | low | AEAD authentication failure threw a bare `Exception` | — | fixed |
 | F13 | medium | Duplicate Unique Identifier / Authenticator fields accepted | 8915 §5.7 | fixed |
 | F14 | low | NTS-KE rejected a bare IP address that the NTP leg accepted | — | fixed |
 | F15 | **high** | NTS-KE server never selected or echoed the `ntske/1` ALPN protocol | 8915 §4 | fixed |
 | F16 | **high** | Default self-signed certificate unusable by any Windows/.NET TLS client | 5480 §2.1.1 | fixed |
+| F17 | **high** | Plain NTP requests were answered with an NTS NAK | 8915 §5.7 | fixed |
 
 ---
 
@@ -281,7 +282,7 @@ comes from the RFC rather than from Norn.
 
 ---
 
-## F9 — Server leaves reference id, reference timestamp and root dispersion unset (open)
+## F9 — Server left reference id, reference timestamp and root dispersion unset
 
 **RFC 5905 §7.3.** `NTSServer.BuildResponse` hard-codes stratum 2 and leaves:
 
@@ -295,15 +296,32 @@ comes from the RFC rather than from Norn.
   server from one deliberately claiming false precision.
 - **Leap Indicator** always 0, so the server never announces that it is unsynchronised.
 
-Fixing these properly means the server knowing something about its own clock — plumbing a
-time source in, not editing a constant — which is why it is recorded rather than patched.
+**Fix.** The server now has a notion of its own clock, settable on the constructor:
+`Stratum`, `ReferenceIdentifier`, `RootDelay`, `RootDispersion`, `LeapIndicator`, and a
+`ClockLastSynchronized` property that a process observing a real synchronisation can update.
 
-**Tests.** `conformance/NTSConformance.Server.Tests/ServerHeaderFieldTests.cs`, three
-`KnownIssue` tests.
+The defaults describe what Norn actually is when nothing is configured — a server handing out
+the operating system's clock with no upstream of its own. That is a stratum-1 server whose
+reference is the local clock (`LOCL` in the §7.3 identifier table), reachable over no network
+path, so a root delay of zero is the truth rather than a placeholder. Root dispersion is the
+one value that cannot be zero: it is the maximum error relative to the reference, and Norn
+cannot observe how well the OS clock is actually synchronised, so the default is the measured
+clock resolution plus a deliberately conservative allowance.
+
+Precision is now the server's own clock resolution, **measured** rather than assumed and no
+longer echoed from the request — echoing reported the client's clock back to it as though it
+described the server's. It is measured because `Stopwatch.Frequency` describes the
+high-resolution timer, not the wall clock the timestamps come from, and on Windows those differ
+by orders of magnitude; reporting the timer's resolution would be a more precise claim than the
+clock can support. On this machine it measures 0.7 µs.
+
+**Tests.** `conformance/NTSConformance.Server.Tests/ServerHeaderFieldTests.cs`, and the same
+fields are asserted on the plain-NTP path by `PlainNtpServerTests`, since a client applies the
+same §11.3 arithmetic either way.
 
 ---
 
-## F10 — No era handling; timestamps break at the 2036 rollover (open)
+## F10 — No era handling; timestamps broke at the 2036 rollover
 
 **RFC 5905 §6.** NTP timestamps are 32 bits of seconds since 1900 plus a 32-bit fraction; the
 seconds field wraps on **2036-02-07T06:28:16Z**, and the RFC requires era disambiguation.
@@ -311,16 +329,19 @@ seconds field wraps on **2036-02-07T06:28:16Z**, and the RFC requires era disamb
 1900, so a timestamp generated after the rollover decodes to a date in the early 1900s — the
 test shows 2036-06-01 arriving as 1900-04-26.
 
-Not yet a live defect. Left open because the fix changes the public timestamp API, which
-deserves its own change rather than being folded in here.
+**Fix.** `NTPTimestampToDateTime` takes an optional `ApproximateTime` and picks the era that
+places the timestamp nearest it, defaulting to now. Within ±68 years that is unambiguous, and
+no NTP timestamp worth reading is further out. Zero is special-cased to the epoch: RFC 5905
+uses it for "unspecified" — an unsynchronised server's reference timestamp — and it must not be
+dragged into a nearby era. `GetCurrentNTPTimestamp` truncates the seconds to 32 bits, which
+*is* the era wrap the wire format expects, instead of overflowing into the fraction.
 
-Norn's fraction also passes through a `Double`, capping effective precision near a
-microsecond where the format allows 233 ps. The suite's reference uses exact integer
-arithmetic; the differential test allows a tolerance well under a microsecond, so this is
-recorded rather than asserted.
+The `Double` was replaced with integer arithmetic in the same pass. The format resolves to
+roughly 233 ps and a `Double` carries 53 bits of mantissa, so routing the fraction through one
+discarded everything below about a microsecond. The differential test against the suite's
+reference now asserts the fraction **exactly** rather than within a tolerance.
 
-**Test.** `conformance/NTSConformance.WireFormat.Tests/TimestampTests.cs` —
-`Norn_HandlesTheEra2036Rollover`, the only `KnownIssue` in the wire-format suite.
+**Test.** `conformance/NTSConformance.WireFormat.Tests/TimestampTests.cs`.
 
 ---
 
@@ -430,6 +451,53 @@ certificate carries a named curve.
 **Tests.** `conformance/NTSConformance.NTSKE.Tests/NtsKeDefaultCertificateTests.cs`, which runs
 against a server started with **no** injected certificate — the configuration the README's own
 quickstart produces.
+
+---
+
+## F17 — Plain NTP requests were answered with an NTS NAK
+
+**RFC 8915 §5.7.** The NTS NAK is for a request that *attempted* NTS and could not be
+validated. A request carrying no NTS extension field is an ordinary RFC 5905 request and must
+be answered as one.
+
+This was **self-inflicted, by the fix for F5**. That fix made the server return a Kiss-o'-Death
+with kiss code `NTSN` when there was no valid cookie — which is also true of every plain NTP
+request. So the server answered all of them with a KoD, and since a KoD means "do not use me",
+no plain NTP client would touch it. The `NTSServer` was unusable as an ordinary NTP server.
+
+**How it surfaced, and why it had not.** Nothing in the suite pointed a plain NTP client at
+Norn's server. `PlainNtp_AgainstChronyd` tests Norn's *client* against chronyd's server, and
+the chrony fixture only ever ran chronyd as a server — the reverse direction had been written
+off as blocked by Windows Firewall.
+
+It turned up while checking, out of caution rather than suspicion, whether an external client
+accepted F9's new header fields. chronyd reported "No suitable source for synchronisation",
+which is what it also says when it dislikes a stratum or a dispersion — so the first
+hypothesis was that F9's defaults were wrong. Three variations of stratum and reference
+identifier were all rejected identically, which cleared F9; the server's own request counters
+showed five requests received and five answered, which cleared the network; and dumping the
+reply with the suite's own reader showed stratum 0 and `NTSN`.
+
+Worth recording as a method: "no suitable source" is not a diagnosis. Separating *rejected my
+reply* from *never received it* needed the server-side counters, and finding out *why* needed
+the packet.
+
+**Fix.** `BuildResponse` returns a plain response when the request carries none of the four NTS
+extension fields, and reaches the NAK path only for a request that did attempt NTS. The RFC 5905
+header is built by one shared `BuildResponseHeader` for both paths, so a plain and an
+NTS-protected reply describe the same clock.
+
+**Tests.** `conformance/NTSConformance.Server.Tests/PlainNtpServerTests.cs` covers the plain
+path directly, including that a request which *does* carry an NTS field but no cookie still
+draws the NAK, so F5 cannot be undone by this fix. The interop side is
+`interop/NTSInterop.LinuxTools.Tests/ChronyAsClientTests.cs`, which runs chronyd as a client and
+requires a real measurement.
+
+The firewall assumption also turned out to be wrong, and for an unrelated reason: the probe
+gating those tests wrote to `/dev/udp`, a **bash** feature, through `Wsl.Run`, which uses `sh` —
+dash on Debian, where the redirect silently fails. The probe reported a blocked network path
+where none existed, and the chrony-as-client tests skipped rather than running. The TCP probe
+had invoked `bash -c` explicitly and worked, which is why the two directions appeared to differ.
 
 ---
 
