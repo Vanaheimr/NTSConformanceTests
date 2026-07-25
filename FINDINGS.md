@@ -10,13 +10,13 @@ the two is evidence rather than an assumption.
 
 Status legend: **fixed** — corrected in `libs/Norn`, the test now guards against regression.
 **open** — pinned by a deliberately failing test tagged `KnownIssue`, excluded from the
-default gate.
+default gate. Every finding has a test.
 
 | # | Severity | Deviation | RFC | Status |
 |---|---|---|---|---|
 | F1 | **critical** | NTS cookies were neither encrypted nor authenticated | 8915 §6 | fixed |
-| F2 | medium | NTS-KE server never emits an `Error` record | 8915 §4.1.3 | open, no test |
-| F3 | medium | NTS-KE server does not actually negotiate | 8915 §4.1.2, §4.1.5 | open, no test |
+| F2 | **high** | NTS-KE server answers malformed requests with success instead of an `Error` record | 8915 §4.1.3 | open |
+| F3 | **high** | NTS-KE server does not negotiate; it answers with values the client never offered | 8915 §4.1.2, §4.1.5 | open |
 | F4 | high | One cookie per response regardless of placeholders | 8915 §5.7 | fixed |
 | F5 | high | No NTS NAK on an unusable cookie | 8915 §5.7 | fixed |
 | F6 | high | Session keys written to the debug log; SIV compared in variable time | 7384 §5.7 | fixed |
@@ -29,6 +29,9 @@ default gate.
 | F13 | medium | Duplicate Unique Identifier / Authenticator fields accepted | 8915 §5.7 | fixed |
 | F14 | low | NTS-KE rejected a bare IP address that the NTP leg accepted | — | fixed |
 | F15 | **high** | NTS-KE server never selected or echoed the `ntske/1` ALPN protocol | 8915 §4 | fixed |
+| F16 | **high** | Default self-signed certificate unusable by any Windows/.NET TLS client | 5480 §2.1.1 | fixed |
+
+---
 
 ---
 
@@ -75,6 +78,79 @@ worth knowing before changing the cookie layout again.
 **Tests.** `conformance/NTSConformance.Cookies.Tests/CookieConfidentialityTests.cs` — 13
 tests: opacity, forgery, per-octet tamper sweep, truncation sweep, master-key binding,
 `MasterKey.Value` actually reaching the cipher, expiry, rotation grace, round-trip.
+
+---
+
+## F2 — NTS-KE server answers malformed requests with success (open)
+
+**RFC 8915 §4.1.3** defines three error codes and requires the server to *send* one:
+
+- **0, Unrecognized Critical Record**: "The server MUST respond with this error code if the
+  request included a record that the server did not understand and that had its Critical Bit
+  set."
+- **1, Bad Request**: "The server MUST respond with this error if the request is not complete
+  and syntactically well-formed, or, upon the expiration of an implementation-defined timeout,
+  it has not yet received such a request."
+- **2, Internal Server Error**.
+
+`NTSKE_Record.Error` exists as a factory and has **no call site** in `Norn/`.
+
+Testing it turned out worse than the code review suggested. The server does not merely omit
+the Error record — it returns a **full, successful NTS-KE response**, twelve records including
+session cookies, to requests it is required to reject:
+
+| Request | Required | Actual |
+|---|---|---|
+| Unrecognized record with Critical Bit set | Error 0 | success, 12 records |
+| No Next Protocol Negotiation record at all | Error 1 | success, 12 records |
+| Next Protocol Negotiation with an empty list | Error 1 | success, 12 records |
+| A record declaring a body longer than the stream | Error 1 | connection closed after the 10 s request timeout, nothing sent |
+
+So a client that sends something malformed is handed working cookies and keys as though
+nothing were wrong, and a client that sends something unparseable waits out a timeout and
+then sees the connection drop, with no way to distinguish that from a network fault.
+
+Note the pairing with `UnknownNonCriticalRecord_IsIgnored`, which **passes**: the server does
+correctly ignore an unrecognized record when the Critical Bit is clear. It ignores it either
+way — which is right half the time by accident, not by design.
+
+**Tests.** `conformance/NTSConformance.NTSKE.Tests/NtsKeServerNegotiationTests.cs`, four
+`KnownIssue` tests. Note `MalformedRecordStream_DrawsError1` is additionally tagged `Slow`:
+with no Error record forthcoming, the only way to establish that the server said nothing is to
+wait out its own `NTSKERequestTimeout`.
+
+---
+
+## F3 — NTS-KE server does not negotiate (open)
+
+**RFC 8915 §4.1.2:** "Protocol IDs listed in the NTS-KE server's response MUST comprise a
+subset of those listed in the request." **§4.1.5:** "When included in a response, this record
+denotes which algorithm the server chooses to use. It is empty if the server supports none of
+the algorithms offered."
+
+`BuildNTSKEResponseRecords` never reads the client's Next Protocol (record 1) or AEAD
+Algorithm (record 4) lists — the only thing it takes from the request is the vendor
+public-key record — and unconditionally answers NTPv4 plus AES-SIV-CMAC-256.
+
+Measured behaviour:
+
+- A client offering **only protocol 1** is told **0 (NTPv4)** — a protocol it never offered,
+  violating the subset rule outright. It is also handed NTPv4 cookies, which are meaningless
+  before NTPv4 has been agreed.
+- A client offering **only AEAD 30** (AES-128-GCM-SIV) is told **15**. §4.1.5's remedy for
+  "supports none of the algorithms offered" is an *empty* record; answering with an algorithm
+  the client did not offer leaves it either failing or, worse, proceeding under an algorithm
+  the server chose unilaterally.
+
+The critical bit is enforced on inbound records client-side (`NTSKERecordValidator`) but not
+server-side, which is the same root cause as F2: nothing inbound is examined.
+
+What the server does get right, and what keeps these tests honest: when a client offers
+`[30, 15]`, the reply is `15` — correct, but only because 15 is the constant it always sends.
+That case is `AeadSelection_ComesFromTheClientsList`, and it **passes**, so the failures above
+cannot be dismissed as the tests being wrong about the record format.
+
+**Tests.** Same file, three `KnownIssue` tests.
 
 ---
 
@@ -289,30 +365,47 @@ vacuously.
 
 ---
 
-## F2, F3 — NTS-KE server error handling and negotiation (open, not yet covered)
+## F16 — Default self-signed certificate unusable by any Windows/.NET TLS client
 
-Recorded from code review; **no test yet**, because both need a scripted TLS peer that can
-send arbitrary NTS-KE record sequences. Stated here so the gap in coverage is visible rather
-than implied.
+`NTSKE_TLSService.GenerateSelfSignedServerCertificate` built its EC key from an
+`ECDomainParameters` assembled out of the curve's components:
 
-**F2 — no `Error` record.** RFC 8915 §4.1.3 defines codes 0 (unrecognized critical record),
-1 (bad request) and 2 (internal server error), and §4 requires the server to respond with one
-rather than just closing. `NTSServer`'s handler increments a counter, logs, and drops the
-connection; the `NTSKE_Record.Error` factory has no call site in `Norn/`. A client sees a
-truncated stream instead of a reason.
+```csharp
+var ecSpec             = SecNamedCurves.GetByName("secp256r1");
+var ecDomainParameters = new ECDomainParameters(ecSpec.Curve, ecSpec.G, ecSpec.N, ecSpec.H, ecSpec.GetSeed());
+```
 
-**F3 — no negotiation.** `BuildNTSKEResponseRecords` never reads the client's Next Protocol
-(record 1) or AEAD Algorithm (record 4) lists — the only thing it takes from the request is
-the vendor public-key record — and unconditionally answers NTPv4 plus AES-SIV-CMAC-256. A
-client offering only `AES_128_GCM_SIV` (30) is told `15`, which it cannot use. The critical
-bit is enforced on inbound records **client**-side (`NTSKERecordValidator`) but not
-server-side, so an unknown critical record draws a normal success response instead of
-Error 0.
+BouncyCastle then encodes the **entire curve specification** into the certificate's
+SubjectPublicKeyInfo as explicit EC parameters — measured at 335 octets against 91 for the
+named-curve form. RFC 5480 §2.1.1 permits that encoding, but Windows' SChannel/CNG implements
+only named curves and rejects the certificate with `CRYPT_E_ASN1_BADTAG` (0x8009310B).
 
-Related, also untested: the client's validator does not require `EndOfMessage` to be present
-or last (absence shows up as a read timeout rather than a protocol error), and the client does
-not re-run NTS-KE when its cookie pool empties — that logic lives a layer up in
-`Monitoring/MeasurementEngine`.
+The failure is in **parsing, not trust**, so it happens before any validation callback is
+consulted: `RemoteCertificateValidationCallback => true` does not help, and neither does
+disabling revocation checking. No .NET `SslStream` client on Windows could complete a handshake
+with a default-configured Norn server.
+
+This survived because every client that had ever tested it was lenient: Norn's own client and
+the interop suite's `gnutls-cli` both accept explicit parameters. It surfaced the moment a
+third stack looked — and initially looked like a bug in the new test client, since the
+symptom was an opaque `InternalException -2146881269` on a handshake that worked from two
+other clients.
+
+**Fix.** Seed the generator from the curve's OID, `SecObjectIdentifiers.SecP256r1`, so the
+certificate carries a named curve.
+
+**Tests.** `conformance/NTSConformance.NTSKE.Tests/NtsKeDefaultCertificateTests.cs`, which runs
+against a server started with **no** injected certificate — the configuration the README's own
+quickstart produces.
+
+---
+
+## Still not covered
+
+The client's NTS-KE validator does not require `EndOfMessage` to be present or last; its
+absence shows up as a read timeout rather than a protocol error. And the client does not re-run
+NTS-KE when its cookie pool empties — that logic lives a layer up in
+`Monitoring/MeasurementEngine`, so a bare `NTSClient` simply starts failing.
 
 ---
 

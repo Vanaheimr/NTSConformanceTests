@@ -25,10 +25,13 @@ makes the negative tests possible at all.
 
 ## Results
 
-The suite found **15 RFC deviations**, including one critical: NTS cookies were neither
+The suite found **16 RFC deviations**, including one critical: NTS cookies were neither
 encrypted nor authenticated, exposing both session keys on the wire and allowing any forged
-cookie to be accepted. Eleven are fixed in `libs/Norn`; four remain open, each pinned by a
+cookie to be accepted. Twelve are fixed in `libs/Norn`; four remain open, each pinned by a
 deliberately failing test.
+
+Verified state: **227 tests green** in the hermetic gate, and eleven deliberately red across
+the four open findings. Every finding — fixed or open — has a test.
 
 See **[FINDINGS.md](FINDINGS.md)** for each one with chapter and verse.
 
@@ -48,7 +51,7 @@ src/NTSConformance.Core/                 the harness
 conformance/
   NTSConformance.WireFormat.Tests/       RFC 5905 header, RFC 7822 framing, timestamps
   NTSConformance.Crypto.Tests/           RFC 5297 / 4493 vectors, differential vs reference
-  NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, critical bit, exporter context
+  NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, server negotiation, certificates
   NTSConformance.Client.Tests/           what the client must refuse
   NTSConformance.Server.Tests/           end-to-end, cookie replenishment, header fields
   NTSConformance.Cookies.Tests/          RFC 8915 §6 — opacity, forgery, rotation
