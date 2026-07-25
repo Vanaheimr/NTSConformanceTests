@@ -145,10 +145,10 @@ public class NtsKeServerNegotiationTests
 
     #endregion
 
-    #region F2 — the server must say why it refused
+    #region the server must say why it refused
 
     /// <summary>
-    /// F2 — RFC 8915 §4: "Implementations which receive a record with an unrecognized Record
+    /// RFC 8915 §4: "Implementations which receive a record with an unrecognized Record
     /// Type MUST ignore the record if the Critical Bit is 0 and MUST treat it as an error if
     /// the Critical Bit is 1", and §4.1.3 error code 0: "The server MUST respond with this
     /// error code if the request included a record that the server did not understand and
@@ -216,7 +216,7 @@ public class NtsKeServerNegotiationTests
 
 
     /// <summary>
-    /// F2 — RFC 8915 §4.1.3 error code 1: "The server MUST respond with this error if the
+    /// RFC 8915 §4.1.3 error code 1: "The server MUST respond with this error if the
     /// request is not complete and syntactically well-formed."
     ///
     /// Here a record declares a body far longer than the octets that follow, so the stream
@@ -246,7 +246,7 @@ public class NtsKeServerNegotiationTests
 
 
     /// <summary>
-    /// F2 — RFC 8915 §4.1.2: "The request MUST list at least one protocol." A request with no
+    /// RFC 8915 §4.1.2: "The request MUST list at least one protocol." A request with no
     /// Next Protocol Negotiation record at all is therefore not complete, and §4.1.3 error
     /// code 1 applies.
     /// </summary>
@@ -272,7 +272,7 @@ public class NtsKeServerNegotiationTests
 
 
     /// <summary>
-    /// F2 — RFC 8915 §4.1.2: an empty protocol list in a <em>request</em> violates "The
+    /// RFC 8915 §4.1.2: an empty protocol list in a <em>request</em> violates "The
     /// request MUST list at least one protocol", so it too is a bad request.
     /// </summary>
     [Test]
@@ -297,10 +297,10 @@ public class NtsKeServerNegotiationTests
 
     #endregion
 
-    #region F3 — the server must actually negotiate
+    #region the server must actually negotiate
 
     /// <summary>
-    /// F3 — RFC 8915 §4.1.2: "Protocol IDs listed in the NTS-KE server's response MUST
+    /// RFC 8915 §4.1.2: "Protocol IDs listed in the NTS-KE server's response MUST
     /// comprise a subset of those listed in the request."
     ///
     /// A client that offers only protocol 1 must not be told 0 (NTPv4). §4.1.2 allows the
@@ -344,7 +344,7 @@ public class NtsKeServerNegotiationTests
 
 
     /// <summary>
-    /// F3 — RFC 8915 §4.1.5: "When included in a response, this record denotes which
+    /// RFC 8915 §4.1.5: "When included in a response, this record denotes which
     /// algorithm the server chooses to use. It is empty if the server supports none of the
     /// algorithms offered."
     ///
@@ -389,7 +389,7 @@ public class NtsKeServerNegotiationTests
 
 
     /// <summary>
-    /// F3 — a server that never reads the client's offers will also hand out NTPv4 cookies to
+    /// a server that never reads the client's offers will also hand out NTPv4 cookies to
     /// a client that never asked for NTPv4. Cookies are only meaningful once a protocol has
     /// been agreed, so issuing them alongside a protocol the client did not offer is the same
     /// defect seen from the other side.

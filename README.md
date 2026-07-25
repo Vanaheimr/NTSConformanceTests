@@ -27,18 +27,15 @@ makes the negative tests possible at all.
 
 The suite found **17 RFC deviations**, including one critical: NTS cookies were neither
 encrypted nor authenticated, exposing both session keys on the wire and allowing any forged
-cookie to be accepted. All seventeen are now fixed in `libs/Norn`, each with a test that
-failed first and now guards against regression.
+cookie to be accepted. All of them are fixed in `libs/Norn`, each with a test that failed first
+and now guards against regression; the reasoning for each is in the commit that fixed it.
 
-Verified state: **243 tests green** in the hermetic gate, nothing red, and nothing left tagged
+Two were reachable only from outside Norn — its own client and GnuTLS were lenient in exactly
+the places it was wrong — which is why the interop projects exist and not only the conformance
+ones.
+
+Verified state: **268 tests green** in the hermetic gate, nothing red, nothing tagged
 `KnownIssue`.
-
-Two of the seventeen were reachable only from outside Norn, and one was caused by an earlier fix
-in this same effort — an NTS NAK that also caught every plain NTP request, making the server
-unusable to any client not using NTS. That one is worth reading: see F17 in
-[FINDINGS.md](FINDINGS.md).
-
-See **[FINDINGS.md](FINDINGS.md)** for each one with chapter and verse.
 
 Interoperability is confirmed in both directions against **chronyd 4.6.1** — Norn's client
 against chronyd's NTS server, and chronyd as a client taking a real measurement from Norn's
@@ -59,8 +56,8 @@ conformance/
   NTSConformance.WireFormat.Tests/       RFC 5905 header, RFC 7822 framing, timestamps
   NTSConformance.Crypto.Tests/           RFC 5297 / 4493 vectors, differential vs reference
   NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, server negotiation, certificates
-  NTSConformance.Client.Tests/           what the client must refuse
-  NTSConformance.Server.Tests/           end-to-end, cookie replenishment, header fields
+  NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, displaced clocks
+  NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock
   NTSConformance.Cookies.Tests/          RFC 8915 §6 — opacity, forgery, rotation
 interop/
   NTSInterop.LinuxTools.Tests/           chronyd and gnutls-cli via WSL
@@ -112,7 +109,7 @@ dotnet test conformance/NTSConformance.Cookies.Tests/NTSConformance.Cookies.Test
 | `WSL` | Needs WSL with chrony / ntpsec / gnutls installed |
 | `Loopback` | Drives a real in-process Norn server over loopback |
 | `Slow` | Runs longer than about five seconds |
-| `KnownIssue` | Pins an RFC requirement Norn violates — currently none; see [FINDINGS.md](FINDINGS.md) |
+| `KnownIssue` | Pins an RFC requirement Norn violates — currently none |
 
 Tests whose prerequisites are missing call `Assert.Ignore` with the command needed to
 satisfy them, rather than failing.

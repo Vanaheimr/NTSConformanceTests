@@ -138,10 +138,10 @@ public class ExtensionFieldTests
 
     #endregion
 
-    #region Malformed: truncation (F7)
+    #region Malformed: truncation
 
     /// <summary>
-    /// F7 — a final field whose declared Length runs past the end of the packet must be
+    /// a final field whose declared Length runs past the end of the packet must be
     /// rejected. Norn's parser instead breaks out of its loop and returns success, silently
     /// discarding that field, so a truncated packet is accepted as if it were shorter.
     ///
@@ -193,10 +193,10 @@ public class ExtensionFieldTests
 
     #endregion
 
-    #region Malformed: length not a multiple of four (F7)
+    #region Malformed: length not a multiple of four
 
     /// <summary>
-    /// F7 — RFC 7822 pads every field to a four-octet boundary, so a Length that is not a
+    /// RFC 7822 pads every field to a four-octet boundary, so a Length that is not a
     /// multiple of 4 cannot describe a conformant field and must be rejected.
     /// </summary>
     [TestCase((UInt16) 37)]
@@ -220,10 +220,10 @@ public class ExtensionFieldTests
 
     #endregion
 
-    #region Malformed: trailing bytes (F7)
+    #region Malformed: trailing bytes
 
     /// <summary>
-    /// F7 — one to three octets after the last field cannot begin another field, and
+    /// one to three octets after the last field cannot begin another field, and
     /// RFC 7822 provides nowhere for them to live. Norn's loop condition
     /// (<c>offset + 4 &lt;= length</c>) walks off the end and ignores them.
     /// </summary>
@@ -270,7 +270,7 @@ public class ExtensionFieldTests
 
 
     /// <summary>
-    /// F7 — RFC 7822 §7.5.1.4: absent a MAC, a lone extension field must be at least 28
+    /// RFC 7822 §7.5.1.4: absent a MAC, a lone extension field must be at least 28
     /// octets. Shorter fields are the ambiguous range the rule exists to keep off the wire.
     /// </summary>
     [TestCase((UInt16) 8)]
@@ -294,7 +294,7 @@ public class ExtensionFieldTests
 
 
     /// <summary>
-    /// F7 / B2 — an unknown field type with a body shorter than 16 octets drives Norn's
+    /// An unknown field type with a body shorter than 16 octets drives Norn's
     /// parser into <c>new NTPExtension(...)</c>, whose constructor throws
     /// <see cref="ArgumentOutOfRangeException"/>. A <c>TryParse</c> must return false for
     /// malformed input, never throw: the exception escapes the contract and, on the server,

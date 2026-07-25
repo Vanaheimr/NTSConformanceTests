@@ -16,7 +16,7 @@ public static class TestCategories
     /// <summary>Longer-running tests (&gt; ~5 s) — master-key rotation, timeouts, concurrency.</summary>
     public const String Slow        = "Slow";
 
-    /// <summary>Encodes an RFC requirement Norn is currently known to violate — see FINDINGS.md.</summary>
+    /// <summary>Encodes an RFC requirement Norn is currently known to violate.</summary>
     public const String KnownIssue  = "KnownIssue";
 
     /// <summary>Drives a real in-process Norn NTSServer over loopback sockets.</summary>

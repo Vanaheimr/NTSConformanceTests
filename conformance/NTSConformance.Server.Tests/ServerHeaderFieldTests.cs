@@ -85,7 +85,7 @@ public class ServerHeaderFieldTests
 
 
     /// <summary>
-    /// F9 — RFC 5905 §7.3: the Reference Identifier names where the server's time comes
+    /// RFC 5905 §7.3: the Reference Identifier names where the server's time comes
     /// from — a four-character source identifier at stratum 1, the upstream server's address
     /// above that. It used to be left at 0.0.0.0, which told a client nothing and left it
     /// unable to detect a timing loop (§11.2 relies on this to avoid syncing through a cycle).
@@ -109,7 +109,7 @@ public class ServerHeaderFieldTests
 
 
     /// <summary>
-    /// F9 — RFC 5905 §7.3: the Reference Timestamp is "the time when the system clock was
+    /// RFC 5905 §7.3: the Reference Timestamp is "the time when the system clock was
     /// last set or corrected". It used to be set to the transmit time, claiming the clock was
     /// corrected at the instant of every reply, which made the field useless for judging how
     /// stale the server's synchronisation is.
@@ -136,7 +136,7 @@ public class ServerHeaderFieldTests
 
 
     /// <summary>
-    /// F9 — RFC 5905 §7.3: Root Dispersion is the maximum error relative to the primary
+    /// RFC 5905 §7.3: Root Dispersion is the maximum error relative to the primary
     /// reference. Zero asserts a perfect clock, which no real server has; §11.3's root
     /// distance calculation then understates the true uncertainty, and a client cannot tell
     /// such a server apart from one deliberately claiming false precision.

@@ -1,5 +1,3 @@
-using System.Net.Sockets;
-
 using NUnit.Framework;
 
 using NTSConformance.Core;
@@ -14,11 +12,11 @@ namespace NTSConformance.Server.Tests;
 /// RFC 8915 §5.7's NTS NAK is for a request that <em>attempted</em> NTS and failed. A request
 /// with no NTS extension field is an ordinary RFC 5905 request and must be answered as one.
 ///
-/// This fixture exists because its absence hid a regression. The NAK was introduced for F5 and
-/// keyed on "no valid cookie", which is also true of every plain NTP request — so the server
-/// answered all of them with a Kiss-o'-Death and no plain NTP client would use it. Nothing
-/// caught it: the chrony tests drove Norn's <em>client</em> against chronyd's server, and no
-/// test had ever pointed a plain NTP client at Norn's.
+/// This fixture exists because its absence hid a regression. The NAK was introduced for the
+/// unusable-cookie case and keyed on "no valid cookie", which is also true of every plain NTP
+/// request — so the server answered all of them with a Kiss-o'-Death and no plain NTP client
+/// would use it. Nothing caught it: the chrony tests drove Norn's <em>client</em> against
+/// chronyd's server, and no test had ever pointed a plain NTP client at Norn's.
 /// </summary>
 [TestFixture]
 [Category(TestCategories.Loopback)]
@@ -48,18 +46,7 @@ public class PlainNtpServerTests
         if (fixture is null)
             throw new InvalidOperationException("the server fixture did not start");
 
-        using var udp = new UdpClient();
-        udp.Client.ReceiveTimeout = 5000;
-        udp.Connect("127.0.0.1", fixture.NTPPort.ToUInt16());
-        udp.Send(RawNtpWriter.Write(request));
-
-        var remote   = new IPEndPoint(IPAddress.Any, 0);
-        var received = udp.Receive(ref remote);
-
-        if (!RawNtpReader.TryRead(received, out var response, out var errorResponse, RawNtpReadOptions.Lenient))
-            throw new InvalidOperationException($"the response could not be read: {errorResponse}\n{Bytes.Dump(received)}");
-
-        return response!;
+        return RawNtpExchange.Exchange(request, "127.0.0.1", fixture.NTPPort);
 
     }
 
@@ -176,7 +163,7 @@ public class PlainNtpServerTests
 
     /// <summary>
     /// A request that does attempt NTS but carries no usable cookie must still draw the NAK —
-    /// the plain-NTP path must not have swallowed F5's fix.
+    /// the plain-NTP path must not have swallowed that.
     /// </summary>
     [Test]
     public void RequestAttemptingNtsWithoutACookie_StillDrawsTheNak()

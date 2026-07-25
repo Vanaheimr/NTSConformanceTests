@@ -122,7 +122,7 @@ public class TimestampTests
 
     #endregion
 
-    #region Era handling (F10)
+    #region Era handling
 
     /// <summary>
     /// The seconds field wraps at 2036-02-07T06:28:16Z. The reference resolves this with an
@@ -160,7 +160,7 @@ public class TimestampTests
 
 
     /// <summary>
-    /// F10 — RFC 5905 § 6: the wire carries only the low 32 bits of the second count, so the
+    /// RFC 5905 § 6: the wire carries only the low 32 bits of the second count, so the
     /// era has to be recovered from context. Norn used to add that count to 1900
     /// unconditionally, decoding every post-2036 timestamp as a date in the early 1900s; it now
     /// picks the era that places the timestamp nearest the expected instant.

@@ -241,7 +241,7 @@ public class AesSivConformanceTests
 
 
     /// <summary>
-    /// F12 — an AEAD authentication failure should surface as a
+    /// an AEAD authentication failure should surface as a
     /// <see cref="CryptographicException"/>. Norn throws a bare
     /// <see cref="Exception"/>, so a caller cannot separate "this message was forged"
     /// from "the library has a bug" without matching on the message text, and
@@ -270,7 +270,7 @@ public class AesSivConformanceTests
     #region Known deviations
 
     /// <summary>
-    /// F8 — RFC 5297 §2.1 defines pad(X) only for len(X) &lt; 128 bits. Norn's
+    /// RFC 5297 §2.1 defines pad(X) only for len(X) &lt; 128 bits. Norn's
     /// <c>Pad</c> allocates a fixed 16-octet buffer and then writes <c>0x80</c> at
     /// <c>Data.Length</c>, so a full block indexes one past the end.
     ///
@@ -292,7 +292,7 @@ public class AesSivConformanceTests
 
 
     /// <summary>
-    /// F11 — encrypting an empty plaintext with no associated data.
+    /// encrypting an empty plaintext with no associated data.
     ///
     /// RFC 5297 §2.6 always appends the plaintext to the S2V input vector, so this case
     /// gives S2V the one-element vector ("") and takes the padded-last-block branch. It is
@@ -316,7 +316,7 @@ public class AesSivConformanceTests
 
 
     /// <summary>
-    /// F6 — AES-SIV must not write key material to the debug log. Norn's
+    /// AES-SIV must not write key material to the debug log. Norn's
     /// <c>Encrypt</c> unconditionally logs both halves of the split key, the synthetic
     /// IV, every associated-data component, the nonce and the ciphertext, on the hot path
     /// of every NTS request and response.

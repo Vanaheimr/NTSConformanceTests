@@ -16,7 +16,7 @@ namespace NTSInterop.LinuxTools.Tests;
 /// against — the server's own request counters are what distinguish "rejected my reply" from
 /// "never received it".
 ///
-/// This direction found a real regression. The NTS NAK added for F5 keyed on "no valid
+/// This direction found a real regression. The NTS NAK for an unusable cookie keyed on "no valid
 /// cookie", which is also true of every plain NTP request, so the server answered chronyd's
 /// plain requests with a Kiss-o'-Death and chronyd refused it outright.
 /// </summary>

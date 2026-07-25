@@ -56,10 +56,23 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// The host name to advertise in the NTPv4 Server Negotiation record. Defaults to
     /// localhost; interop clients outside this machine need a name or address they can reach.
     /// </param>
+    /// <param name="listenIPAddress">
+    /// The local address to listen on. Left null the server picks its own default, which is
+    /// IPv4 0.0.0.0; <c>IPvXAddress.Any</c> serves both address families.
+    /// </param>
+    /// <param name="timeProvider">
+    /// The clock the server reads and reports. Left null it reads the real one.
+    /// </param>
+    /// <param name="clockResolution">
+    /// The clock granularity to report, overriding what the server measures.
+    /// </param>
     public static Task<NornServerFixture> StartAsync(TimeSpan?        masterKeyLifetime            = null,
                                                     TimeSpan?        masterKeyRotationGracePeriod  = null,
                                                     TestCertificate? certificate                   = null,
-                                                    String?          externalHostName              = null)
+                                                    String?          externalHostName              = null,
+                                                    IIPAddress?      listenIPAddress               = null,
+                                                    TimeProvider?    timeProvider                  = null,
+                                                    TimeSpan?        clockResolution               = null)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 
@@ -73,7 +86,10 @@ public sealed class NornServerFixture : IAsyncDisposable
                                 MasterKeyLifetime:             masterKeyLifetime,
                                 MasterKeyRotationGracePeriod:  masterKeyRotationGracePeriod,
                                 TLSCertificate:                certificate?.Certificate,
-                                TLSPrivateKey:                 certificate?.PrivateKey
+                                TLSPrivateKey:                 certificate?.PrivateKey,
+                                ListenIPAddress:               listenIPAddress,
+                                TimeProvider:                  timeProvider,
+                                ClockResolution:               clockResolution
                             );
 
                await server.Start();
@@ -87,9 +103,15 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// A client pointed at this server, accepting its self-signed certificate.
     ///
     /// IPv4 is forced: the client prefers IPv6 by default, and the server's default
-    /// <c>ListenIPAddress</c> of <c>IPAddress.Any</c> binds IPv4 only.
+    /// <c>ListenIPAddress</c> is the IPv4 wildcard.
     /// </summary>
-    public NTSClient CreateClient(TimeSpan? timeout = null)
+    /// <param name="timeout">How long the client waits for each leg.</param>
+    /// <param name="timeProvider">
+    /// The clock the client stamps its requests from — independent of the server's, which is
+    /// how a client-side clock can be checked against a server that keeps correct time.
+    /// </param>
+    public NTSClient CreateClient(TimeSpan?      timeout        = null,
+                                  TimeProvider?  timeProvider   = null)
 
         => new (DomainName.Localhost,
                 NTSKE_Port:                  NTSKEPort,
@@ -97,7 +119,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                 IPVersionPreference:         IPVersionPreference.IPv4Only,
                 Timeout:                     timeout,
                 RemoteCertificateValidator:  (sender, certificate, chain, tlsClient, policyErrors)
-                                                 => TLSValidationResult.Success());
+                                                 => TLSValidationResult.Success(),
+                TimeProvider:                timeProvider);
 
 
     /// <summary>The measured system clock resolution, for diagnostics.</summary>
