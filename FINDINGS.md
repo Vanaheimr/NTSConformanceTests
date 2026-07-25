@@ -15,8 +15,8 @@ default gate. Every finding has a test.
 | # | Severity | Deviation | RFC | Status |
 |---|---|---|---|---|
 | F1 | **critical** | NTS cookies were neither encrypted nor authenticated | 8915 §6 | fixed |
-| F2 | **high** | NTS-KE server answers malformed requests with success instead of an `Error` record | 8915 §4.1.3 | open |
-| F3 | **high** | NTS-KE server does not negotiate; it answers with values the client never offered | 8915 §4.1.2, §4.1.5 | open |
+| F2 | **high** | NTS-KE server answered malformed requests with success instead of an `Error` record | 8915 §4.1.3 | fixed |
+| F3 | **high** | NTS-KE server did not negotiate; it answered with values the client never offered | 8915 §4.1.2, §4.1.5 | fixed |
 | F4 | high | One cookie per response regardless of placeholders | 8915 §5.7 | fixed |
 | F5 | high | No NTS NAK on an unusable cookie | 8915 §5.7 | fixed |
 | F6 | high | Session keys written to the debug log; SIV compared in variable time | 7384 §5.7 | fixed |
@@ -81,7 +81,7 @@ tests: opacity, forgery, per-octet tamper sweep, truncation sweep, master-key bi
 
 ---
 
-## F2 — NTS-KE server answers malformed requests with success (open)
+## F2 — NTS-KE server answered malformed requests with success
 
 **RFC 8915 §4.1.3** defines three error codes and requires the server to *send* one:
 
@@ -114,14 +114,35 @@ Note the pairing with `UnknownNonCriticalRecord_IsIgnored`, which **passes**: th
 correctly ignore an unrecognized record when the Critical Bit is clear. It ignores it either
 way — which is right half the time by accident, not by design.
 
-**Tests.** `conformance/NTSConformance.NTSKE.Tests/NtsKeServerNegotiationTests.cs`, four
-`KnownIssue` tests. Note `MalformedRecordStream_DrawsError1` is additionally tagged `Slow`:
-with no Error record forthcoming, the only way to establish that the server said nothing is to
-wait out its own `NTSKERequestTimeout`.
+**Fix.** Every path now answers. `NegotiateNTSKE` examines the request and returns either an
+error code or what was agreed; the connection handler writes `Error` + `End of Message` for the
+former. `NTSKE_Record.Error(NTSKEErrorCodes)` was added because the existing factory encoded
+free text, where §4.1.3 defines the body as a two-octet code — the old overload is now
+`[Obsolete]`.
+
+The timeout case needed more than that, and is worth recording because the symptom was
+misleading. The handler duly decided to send Error 1 after the read timed out, and the write
+then failed with *"Cannot write application data on closed/failed TLS connection"* — 35 seconds
+later, once the client gave up. `Task.WaitAsync` abandons a slow read without stopping it,
+BouncyCastle serializes access to the TLS stream, and so the abandoned read went on holding the
+stream; when it finally collapsed it marked the connection failed. Bounding the read at the
+socket instead was no better: BouncyCastle marks the connection failed on any read exception
+too.
+
+What works is not entering the TLS read at all until data is there. `NTSKEMessageReader` now
+takes the socket and polls it for readability against a deadline, descending into the TLS stream
+only when bytes have arrived. A truncated request then expires with the TLS connection still
+healthy, and the Error record can actually be written. A generous socket-level receive timeout
+remains as a backstop so a client stalling mid-TLS-record cannot hold the connection and its
+semaphore slot indefinitely.
+
+**Tests.** `conformance/NTSConformance.NTSKE.Tests/NtsKeServerNegotiationTests.cs`.
+`MalformedRecordStream_DrawsError1` is tagged `Slow`: establishing that the timeout path answers
+means waiting out `NTSKERequestTimeout`.
 
 ---
 
-## F3 — NTS-KE server does not negotiate (open)
+## F3 — NTS-KE server did not negotiate
 
 **RFC 8915 §4.1.2:** "Protocol IDs listed in the NTS-KE server's response MUST comprise a
 subset of those listed in the request." **§4.1.5:** "When included in a response, this record
@@ -145,12 +166,24 @@ Measured behaviour:
 The critical bit is enforced on inbound records client-side (`NTSKERecordValidator`) but not
 server-side, which is the same root cause as F2: nothing inbound is examined.
 
-What the server does get right, and what keeps these tests honest: when a client offers
-`[30, 15]`, the reply is `15` — correct, but only because 15 is the constant it always sends.
-That case is `AeadSelection_ComesFromTheClientsList`, and it **passes**, so the failures above
-cannot be dismissed as the tests being wrong about the record format.
+What the server already got right, and what kept these tests honest while they were failing:
+when a client offers `[30, 15]`, the reply is `15` — correct, though at the time only because 15
+was the constant it always sent. That case is `AeadSelection_ComesFromTheClientsList`, and it
+passed throughout, so the failures could not be dismissed as the tests misreading the record
+format.
 
-**Tests.** Same file, three `KnownIssue` tests.
+**Fix.** `NegotiateNTSKE` intersects the client's offers with what the server implements
+(`supportedNextProtocols`, `supportedAEADAlgorithms`) and the response carries the result —
+empty when the intersection is, which is exactly how §4.1.2 and §4.1.5 say a server declines.
+Cookies, and the Server/Port Negotiation records, are emitted only once NTPv4 is actually
+agreed, and the cookies are minted for the negotiated algorithm rather than a hard-coded one.
+`NTSKE_Record.NextProtocolNegotiation(...)` and an `IEnumerable<AEADAlgorithms>` overload of
+`AEADAlgorithmNegotiation` were added so an empty list is expressible at all.
+
+Inbound critical-bit enforcement came with it: an unrecognized record with the bit set is now
+refused with Error 0, which is the same root cause as F2 — nothing inbound had been examined.
+
+**Tests.** Same file, ten tests in total across F2 and F3.
 
 ---
 

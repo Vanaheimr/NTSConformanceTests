@@ -25,6 +25,7 @@ public class NtsKeServerNegotiationTests
 {
 
     private NornServerFixture? fixture;
+    private DebugXSink?        sink;
 
     /// <summary>AEAD ids from the IANA registry: 15 is the one NTS mandates, 30 is not implemented here.</summary>
     private const UInt16 AeadAesSivCmac256 = 15;
@@ -33,15 +34,24 @@ public class NtsKeServerNegotiationTests
 
     [OneTimeSetUp]
     public async Task StartServer()
-        => fixture = await NornServerFixture.StartAsync(
-                         certificate: TestCertificate.Generate("nts-ke.test", [ "nts-ke.test" ]));
+    {
+        // The server's own log is often the only place the reason appears — a client that gets
+        // no reply cannot tell why, which is the very defect these tests are about.
+        sink    = new DebugXSink();
+        fixture = await NornServerFixture.StartAsync(
+                      certificate: TestCertificate.Generate("nts-ke.test", [ "nts-ke.test" ]));
+    }
 
 
     [OneTimeTearDown]
     public async Task StopServer()
     {
+
         if (fixture is not null)
             await fixture.DisposeAsync();
+
+        sink?.Dispose();
+
     }
 
 
@@ -149,7 +159,6 @@ public class NtsKeServerNegotiationTests
     /// record would let the handshake succeed.
     /// </summary>
     [Test]
-    [Category(TestCategories.KnownIssue)]
     public async Task UnknownCriticalRecord_DrawsError0()
     {
 
@@ -214,7 +223,6 @@ public class NtsKeServerNegotiationTests
     /// cannot be parsed at all.
     /// </summary>
     [Test]
-    [Category(TestCategories.KnownIssue)]
     // Slow by nature: with no Error record forthcoming, the only way to establish that the
     // server said nothing is to wait out its own NTSKERequestTimeout.
     [Category(TestCategories.Slow)]
@@ -243,7 +251,6 @@ public class NtsKeServerNegotiationTests
     /// code 1 applies.
     /// </summary>
     [Test]
-    [Category(TestCategories.KnownIssue)]
     public async Task RequestWithoutNextProtocolNegotiation_DrawsError1()
     {
 
@@ -269,7 +276,6 @@ public class NtsKeServerNegotiationTests
     /// request MUST list at least one protocol", so it too is a bad request.
     /// </summary>
     [Test]
-    [Category(TestCategories.KnownIssue)]
     public async Task RequestWithEmptyProtocolList_DrawsError1()
     {
 
@@ -303,7 +309,6 @@ public class NtsKeServerNegotiationTests
     /// protocol the two never agreed on.
     /// </summary>
     [Test]
-    [Category(TestCategories.KnownIssue)]
     public async Task NextProtocolResponse_IsASubsetOfTheRequest()
     {
 
@@ -353,7 +358,6 @@ public class NtsKeServerNegotiationTests
     /// <see cref="AeadSelection_ComesFromTheClientsList"/>.
     /// </summary>
     [Test]
-    [Category(TestCategories.KnownIssue)]
     public async Task UnsupportedAeadOnly_YieldsAnEmptyRecordOrAnError()
     {
 
@@ -391,7 +395,6 @@ public class NtsKeServerNegotiationTests
     /// defect seen from the other side.
     /// </summary>
     [Test]
-    [Category(TestCategories.KnownIssue)]
     public async Task NoCookiesWhenNtpv4WasNotNegotiated()
     {
 

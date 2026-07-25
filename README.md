@@ -27,11 +27,11 @@ makes the negative tests possible at all.
 
 The suite found **16 RFC deviations**, including one critical: NTS cookies were neither
 encrypted nor authenticated, exposing both session keys on the wire and allowing any forged
-cookie to be accepted. Twelve are fixed in `libs/Norn`; four remain open, each pinned by a
+cookie to be accepted. Fourteen are fixed in `libs/Norn`; two remain open, each pinned by a
 deliberately failing test.
 
-Verified state: **227 tests green** in the hermetic gate, and eleven deliberately red across
-the four open findings. Every finding — fixed or open — has a test.
+Verified state: **234 tests green** in the hermetic gate, and four deliberately red across
+the two open findings. Every finding — fixed or open — has a test.
 
 See **[FINDINGS.md](FINDINGS.md)** for each one with chapter and verse.
 
