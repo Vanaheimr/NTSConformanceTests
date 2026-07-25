@@ -4,8 +4,10 @@ An adversarial conformance suite for [Norn](libs/Norn), the Vanaheimr NTP/NTS
 implementation, plus interoperability tests against independent implementations.
 
 Covers **RFC 5905** (NTPv4), **RFC 7822** (extension fields), **RFC 8915** (Network Time
-Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC) and **RFC 7384** (security
-requirements for time protocols).
+Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC), **RFC 3686** (AES-CTR),
+**RFC 8446** (TLS 1.3), **RFC 7301** (ALPN), **RFC 5480** (EC key encoding) and **RFC 7384**
+(security requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is
+asserted, what is planned, and what is deliberately out of scope.
 
 ## Why a second implementation
 
@@ -42,6 +44,115 @@ against chronyd's NTS server, and chronyd as a client taking a real measurement 
 server — plus **GnuTLS** against the NTS-KE endpoint, and **Cloudflare** and **PTB** with
 certificate validation switched on.
 
+## RFC coverage
+
+What the suite asserts, RFC by RFC. The Focus column is what is actually checked, not what the
+RFC says — a row is ✅ only when a test here would fail if the behaviour regressed.
+
+| | meaning |
+|---|---|
+| ✅ | implemented in Norn **and** verified by a passing test in this suite |
+| 🟡 | basics asserted here, or covered fully only by Norn's own test suite |
+| ⬜ | implemented in Norn, no test in this suite yet |
+| — | not implemented in Norn; see [Planned](#planned) or [Out of scope](#out-of-scope) |
+
+### NTPv4 — RFC 5905, RFC 7822
+
+| RFC | Focus | |
+|---|---|:--:|
+| 5905 §7.3 | Header layout, byte-exact: LI/VN/Mode packing, stratum, poll, signed precision, reference identifier, all four timestamps | ✅ |
+| 5905 §6 | 64-bit timestamp format: exact integer conversion down to 233 ps, the 16.16 short format, era wrap at 2036-02-07, zero as "unspecified" | ✅ |
+| 5905 §7.3 | Server clock characteristics: stratum 1 with `LOCL`, root delay and dispersion never falsely zero, precision from the server's own measured resolution | ✅ |
+| 5905 §7.4 | Kiss-o'-Death: stratum 0 with a readable kiss code, and never in answer to a plain NTP request | ✅ |
+| 5905 §8 | Offset and delay arithmetic, recovered from randomly displaced client and server clocks; Norn's own `ClockOffset` cross-checked against this suite's | ✅ |
+| 5905 §11.3 | The root-distance inputs a client needs: dispersion non-zero, delay and dispersion surviving the short-format round trip | ✅ |
+| 5905 §7.3 | Leap indicator 3 — an unsynchronized server must be refused as a time source | ✅ |
+| 7822 | Extension field framing: length below 4, length not a multiple of 4, truncation, 1–3 trailing octets, unknown types, duplicate Unique Identifier, the 28- and 16-octet minimums | ✅ |
+| 5905 §7.3 | IPv6 reference identifier — the first four octets of the address digest | ⬜ |
+| 5905 §9.1 | Peer, broadcast and multicast modes | — |
+| 5905 §10–§12 | Clock filter, selection, clustering and discipline | — |
+| 5905 App. A | Symmetric-key MAC: the Key Identifier and Message Digest fields parse, but are never emitted | — |
+
+### Network Time Security — RFC 8915
+
+| RFC | Focus | |
+|---|---|:--:|
+| §4 | NTS-KE over TLS 1.3 with ALPN `ntske/1`, offered and echoed; TLS 1.2 refused | ✅ |
+| §4.1 | Record framing: 16-bit type with the critical bit separated out, body length excluding the header, a body overrunning the message rejected, unknown records rejected only when critical | ✅ |
+| §4.1.1 | End of Message: present, critical, empty, and last | ✅ |
+| §4.1.2 | Next protocol negotiation: the response must be a subset of the request, and a request listing none is refused | ✅ |
+| §4.1.3 | Error records: unknown critical record → 0, malformed record stream → 1, sent rather than dropped in silence | ✅ |
+| §4.1.5 | AEAD negotiation: the selection comes from the client's list, the IDs match the IANA registry, and an offer of only an unsupported algorithm is refused | ✅ |
+| §4.1.6 | New Cookie for NTPv4: none issued when NTPv4 was not the negotiated protocol | ✅ |
+| §4.1.4 | Warning records | ⬜ |
+| §4.1.7, §4.1.8 | NTPv4 server and port negotiation: records emitted and parsed here, the client-side redirect covered by Norn's own tests | 🟡 |
+| §5.1 | TLS key extraction: the exporter label and its five-octet context, byte-exact and distinct per direction | ✅ |
+| §5.3, §5.4, §5.5 | Unique Identifier echoed; Cookie and Cookie Placeholder fields, a placeholder valid only at cookie length | ✅ |
+| §5.6 | Authenticator and Encrypted extension field: associated data is the header followed by every preceding field, as one contiguous string | ✅ |
+| §5.7 | Cookie replenishment — one per valid placeholder, capped — and an NTS NAK carrying kiss code `NTSN` for a request that attempted NTS and could not be validated | ✅ |
+| §5.7 | Response validation: missing authenticator, wrong key, tampered ciphertext, tampered associated data | ✅ |
+| §5.7 | Replay rejection of a duplicate transmit timestamp — asserted in Norn's own suite | 🟡 |
+| §6 | Cookie format: opaque on the wire, AEAD-sealed and authenticated, forged/tampered/truncated refused, bound to its master key, rotation with a grace window, expired key refused | ✅ |
+
+### Cryptography — RFC 5297, RFC 4493, RFC 3686
+
+| RFC | Focus | |
+|---|---|:--:|
+| 5297 App. A | Both published AES-SIV vectors, encrypt and decrypt, plus every S2V intermediate of A.1 | ✅ |
+| 5297 §2.4 | S2V sensitivity to component boundaries, and an empty plaintext with no associated data | ✅ |
+| 5297 §2.1 | `pad` is defined only below a full block: a full or overlong block must be refused, not read out of bounds | ✅ |
+| 4493 | AES-CMAC subkey generation and every published vector | ✅ |
+| 3686 | CTR mode with a full 128-bit counter increment, and SIV's counter masking | ✅ |
+| 7384 | No key material in logs; authentication failure is constant-time and typed | ✅ |
+| — | Differential: every operation cross-checked against an independent implementation, both directions | ✅ |
+| 5297 | AES-SIV-CMAC-384 and -512 | — |
+| 5116, 5282, 6655, 7253, 8452, 8439 | The other AEADs in the IANA registry — enumerated so they can be named in negotiation, none implemented | — |
+
+### Transport and PKI
+
+| RFC | Focus | |
+|---|---|:--:|
+| 8446 | TLS 1.3 required — a 1.2-only client is refused | ✅ |
+| 7301 | ALPN `ntske/1` selected and echoed, verified against two independent TLS stacks | ✅ |
+| 5480 §2.1.1 | EC public keys encoded as a named curve rather than explicit parameters; a certificate carrying explicit parameters is unusable by SChannel/CNG | ✅ |
+| 6125 | Certificate identity: the configured certificate is presented, and accepted by a third-party client | 🟡 |
+
+### Planned
+
+Not covered yet, in rough order of value:
+
+- **RFC 8915 §4.1.4 Warning records** — implemented, untested.
+- **RFC 5905 §7.3 IPv6 reference identifier** — implemented, untested.
+- **RFC 8915 §4.1.7 and §4.1.8 from this side** — a scripted NTS-KE server that redirects the
+  client to a different host and port, to prove the client actually follows it.
+- **AES-SIV-CMAC-384 and -512** — needs implementing in Norn first, and the reference codec
+  would have to grow the same variants to stay independent of it.
+- **RFC 9109 port randomization** — the client uses whatever ephemeral port the OS assigns,
+  which satisfies this in practice but is neither explicit nor asserted.
+- **RFC 8633 operational behaviour** — poll-interval discipline, backing off after a
+  Kiss-o'-Death, and the rate limiting a public-facing server needs.
+- **RFC 5905 §10–§12** — the clock filter and selection algorithms, once Norn does more than
+  measure: its monitoring engine computes offsets but steers nothing.
+- **Interleaved client/server mode** — chrony and ntpd both support it; Norn does not.
+
+### Out of scope
+
+Deliberately not covered, and why:
+
+- **RFC 5906 Autokey** — cryptographically broken and effectively abandoned. NTS exists
+  because of it; testing it would be testing a mistake.
+- **RFC 8573 and RFC 5905 App. A symmetric-key MAC** — the shared-key AES-CMAC and MD5 scheme.
+  Norn authenticates with NTS, which is the whole point of Norn.
+- **RFC 1305 NTPv3 and RFC 4330 SNTP** — Norn is NTPv4 only. How it treats an older version
+  number on the wire is a compatibility question, not a conformance one.
+- **RFC 5907 NTP MIB** — there is no SNMP management plane to test.
+- **IEEE 1588 PTP and NTS4PTP** — a different protocol family over a different transport.
+- **NTPv5** — still a draft; there is nothing to conform to yet.
+- **Leap second handling** — Norn reports the leap indicator it is given. Getting a leap right
+  end to end needs a leap-second file and a clock that can be steered, which belongs to
+  whatever does the steering rather than to the protocol implementation.
+- **ntpd feature parity** — orphan mode, reference clock drivers, mode 6/7 control queries.
+
 ## Layout
 
 ```
@@ -50,6 +161,7 @@ src/NTSConformance.Core/                 the harness
   RawNtp/                                independent RFC 5905 + 7822 codec, and AES-SIV
   RawNtsKe/                              independent RFC 8915 §4 record codec
   Fixtures/                              Norn and chronyd server fixtures, certificates, DebugX capture
+  TestClock.cs                           a TimeProvider the test controls: frozen, or displaced
   TestEnvironment.cs                     capability probing, Assert.Ignore gating
   Wsl.cs                                 WSL bridge, host↔VM addressing
 conformance/
@@ -124,6 +236,7 @@ git submodule update --init --recursive
 
 `libs/Norn` is the system under test; it depends on `libs/Hermod`, which depends on
 `libs/Styx`. The existing relative `ProjectReference` paths resolve as-is with this layout.
+All three resolve over HTTPS from the public GitHub mirrors, so no account or key is needed.
 
 For the WSL interop tests:
 
@@ -150,3 +263,7 @@ inbound access probe for it first and explain the firewall rule required.
 - Server fixtures always pass `MasterKeysFilePath: null`. Left at its default, `NTSServer`
   appends rotating cookie master keys to `masterKeys.json` in the working directory, which
   would both leak state between runs and persist secrets from a test process.
+- Time-dependent assertions inject a clock (`TestClock`) rather than tolerating the real one.
+  A substituted clock is the only way to assert a reported time exactly, and it keeps the
+  server's clock and the client's independently controllable — which is what makes the offset
+  arithmetic testable at all.
