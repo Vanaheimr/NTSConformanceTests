@@ -1,8 +1,5 @@
 # Norn NTP/NTS Conformance & Interoperability Test Suite
 
-[![CI](https://github.com/Vanaheimr/NTSConformanceTests/actions/workflows/ci.yml/badge.svg)](https://github.com/Vanaheimr/NTSConformanceTests/actions/workflows/ci.yml)
-[![Nightly](https://github.com/Vanaheimr/NTSConformanceTests/actions/workflows/nightly.yml/badge.svg)](https://github.com/Vanaheimr/NTSConformanceTests/actions/workflows/nightly.yml)
-
 An adversarial conformance suite for [Norn](libs/Norn), the Vanaheimr NTP/NTS
 implementation, plus interoperability tests against independent implementations.
 
@@ -228,16 +225,6 @@ dotnet test conformance/NTSConformance.Cookies.Tests/NTSConformance.Cookies.Test
 
 Tests whose prerequisites are missing call `Assert.Ignore` with the command needed to
 satisfy them, rather than failing.
-
-### On GitHub
-
-[`ci.yml`](.github/workflows/ci.yml) runs the hermetic gate on every push and pull request
-to `master`; [`nightly.yml`](.github/workflows/nightly.yml) repeats it at 03:23 UTC and adds
-the public NTS servers as an **informational** step — a hosted runner's egress on UDP/123 and
-TCP/4460 is often blocked or rate-limited, so those must not be able to turn the night red.
-
-The WSL lane cannot run on GitHub at all: hosted runners have no WSL. It stays a local check,
-and is the one worth running by hand before a release.
 
 ## Prerequisites
 
