@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/conformance/">
+    <Project Path="conformance/NTSConformance.CLI.Tests/NTSConformance.CLI.Tests.csproj" />
     <Project Path="conformance/NTSConformance.Client.Tests/NTSConformance.Client.Tests.csproj" />
     <Project Path="conformance/NTSConformance.Cookies.Tests/NTSConformance.Cookies.Tests.csproj" />
     <Project Path="conformance/NTSConformance.Crypto.Tests/NTSConformance.Crypto.Tests.csproj" />
@@ -17,6 +18,7 @@
   </Folder>
   <Folder Name="/libs/Norn/">
     <Project Path="libs/Norn/Norn/Norn.csproj" />
+    <Project Path="libs/Norn/NornCLI/NornCLI.csproj" />
     <Project Path="libs/Norn/NornTests/NornTests.csproj" />
   </Folder>
   <Folder Name="/libs/Styx/">

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="NUnit" Version="4.6.1" />
+    <PackageReference Include="NUnit3TestAdapter" Version="6.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NTSConformance.Core\NTSConformance.Core.csproj" />
+
+    <!--
+      Referenced so that building these tests builds the tool and drops it next to them, which
+      is what makes the tests able to run it. ReferenceOutputAssembly="false": the point is the
+      executable, not its types, and linking against an Exe would let a test reach past the
+      command line into the code under test — which is the one thing these tests must not do.
+    -->
+    <ProjectReference Include="..\..\libs\Norn\NornCLI\NornCLI.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Where the tool ended up, baked in at build time. Computed here rather than searched for at
+      run time: a test that goes looking for an executable can find a stale one from an earlier
+      configuration and report on that instead, which is a failure mode that looks exactly like
+      a bug in the tool.
+    -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>NornCLIDirectory</_Parameter1>
+      <_Parameter2>$(MSBuildThisFileDirectory)..\..\libs\Norn\NornCLI\bin\$(Configuration)\$(TargetFramework)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

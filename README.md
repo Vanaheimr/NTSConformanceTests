@@ -38,7 +38,7 @@ Two were reachable only from outside Norn — its own client and GnuTLS were len
 the places it was wrong — which is why the interop projects exist and not only the conformance
 ones.
 
-Verified state: **385 tests green** in the hermetic gate, nothing red, nothing tagged
+Verified state: **426 tests green** in the hermetic gate, nothing red, nothing tagged
 `KnownIssue`.
 
 Interoperability is confirmed against three independent implementations, in every direction:
@@ -139,6 +139,20 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 9525 §6.3 | Certificate identity: which host names a certificate speaks for — a wildcard covers exactly one label, never the apex and never two; partial and misplaced wildcards are ignored rather than guessed at; the Common Name is not a fallback | ✅ |
 | 6125 | Certificate identity: the configured certificate is presented, and accepted by a third-party client | 🟡 |
 
+### The command line
+
+Norn ships a `norn` executable alongside the library (`libs/Norn/NornCLI`), and this suite
+tests it as a process rather than as a method call — argument strings in, exit code and two
+streams out, which is the whole of what a CLI promises.
+
+| | Focus | |
+|---|---|:--:|
+| `norn query` | Measures against an NTS or plain NTP server; `--plain`, `--count`, `--interleaved`, `--insecure` reach what they name, a Kiss-o'-Death is reported as itself rather than as four failed NTS checks | ✅ |
+| `norn ke` | Runs the key exchange alone and reports the TLS version, ALPN, certificate, timings and records — the stage where most of what goes wrong with NTS goes wrong | ✅ |
+| `norn serve` | Runs a server; `--stratum`, `--refid` and `--rate-limit` are observed on the wire by this suite's own raw client, and a taken port fails with a sentence rather than a stack trace | ✅ |
+| Exit codes | 0 success, 1 the operation failed, 2 the command line could not be understood — a mistyped option is an error rather than a shrug | ✅ |
+| `--json` | stdout carries the document and nothing else; warnings and errors stay on stderr, including on failure | ✅ |
+
 ### Planned
 
 Not covered yet, in rough order of value:
@@ -204,6 +218,7 @@ conformance/
   NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, where its query goes
   NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock, interleaved mode
   NTSConformance.Cookies.Tests/          RFC 8915 §6 — opacity, forgery, rotation
+  NTSConformance.CLI.Tests/              the `norn` executable, run as a process
 interop/
   NTSInterop.LinuxTools.Tests/           chronyd, ntpd-rs and gnutls-cli via WSL
   NTSInterop.PublicServers.Tests/        Cloudflare, PTB, Netnod, time.nl
@@ -244,6 +259,27 @@ A single area:
 
 ```bash
 dotnet test conformance/NTSConformance.Cookies.Tests/NTSConformance.Cookies.Tests.csproj
+```
+
+### The tool itself
+
+Norn's command line lives in the submodule and is built along with everything else. Against a
+public server:
+
+```bash
+dotnet run --project libs/Norn/NornCLI -- query time.cloudflare.com
+```
+
+To see what a key exchange agreed on, which is where most NTS problems are:
+
+```bash
+dotnet run --project libs/Norn/NornCLI -- ke ptbtime1.ptb.de
+```
+
+To stand one up, unprivileged, on a port that needs no root:
+
+```bash
+dotnet run --project libs/Norn/NornCLI -- serve --port 12123 --ke-port 14460 --listen 127.0.0.1
 ```
 
 ### Categories
