@@ -6,7 +6,8 @@ implementation, plus interoperability tests against independent implementations.
 Covers **RFC 5905** (NTPv4), **RFC 7822** (extension fields), **RFC 8915** (Network Time
 Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC), **RFC 3686** (AES-CTR),
 **RFC 8446** (TLS 1.3), **RFC 7301** (ALPN), **RFC 5480** (EC key encoding), **RFC 9109**
-(port randomization), **RFC 9748** (the NTP registries), **RFC 9769** (interleaved modes)
+(port randomization), **RFC 9748** (the NTP registries), **RFC 9769** (interleaved modes),
+**RFC 8633** (the NTP BCP)
 and **RFC 7384** (security requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is asserted,
 what is planned, and what is deliberately out of scope.
 
@@ -37,14 +38,14 @@ Two were reachable only from outside Norn — its own client and GnuTLS were len
 the places it was wrong — which is why the interop projects exist and not only the conformance
 ones.
 
-Verified state: **323 tests green** in the hermetic gate, nothing red, nothing tagged
+Verified state: **374 tests green** in the hermetic gate, nothing red, nothing tagged
 `KnownIssue`.
 
 Interoperability is confirmed against three independent implementations, in every direction:
 
 | | Norn as client | Norn as NTS server | Norn as plain NTP server |
 |---|:--:|:--:|:--:|
-| **chronyd 4.6.1** | yes | yes, incl. `xleave` + NTS together | yes, incl. RFC 9769 `xleave` |
+| **chronyd 4.6.1** | yes | yes, incl. `xleave` + NTS together | yes, incl. RFC 9769 `xleave` and RFC 8633 `RATE` |
 | **ntpd-rs 1.4** | yes | yes | yes |
 | **gnutls-cli** | — | NTS-KE and ALPN | — |
 
@@ -76,6 +77,9 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 5905 §6 | 64-bit timestamp format: exact integer conversion down to 233 ps, the 16.16 short format, era wrap at 2036-02-07, zero as "unspecified" | ✅ |
 | 5905 §7.3 | Server clock characteristics: stratum 1 with `LOCL`, root delay and dispersion never falsely zero, precision from the server's own measured resolution | ✅ |
 | 5905 §7.4 | Kiss-o'-Death: stratum 0 with a readable kiss code, and never in answer to a plain NTP request | ✅ |
+| 5905 §7.4, 8633 §5.4 | Acting on a kiss code: `DENY` and `RSTR` demobilize the association, every `RATE` slows the client one step further, `X…` and unrecognized codes change nothing — and a kiss is believed only if it echoes the request | ✅ |
+| 8633 §5.4 | Server-side rate limiting: a token bucket per address that admits an `iburst`, a `RATE` kiss carrying the poll interval the server will serve, the kisses throttled per address and globally so a spoofed flood cannot be reflected, and the state capped in memory and in the cost of enforcing the cap | ✅ |
+| 8633 §5.4 | And chronyd adopts the exact poll exponent Norn's kiss asks for, having read the packet with none of Norn's code | ✅ |
 | 5905 §8 | Offset and delay arithmetic, recovered from randomly displaced client and server clocks; Norn's own `ClockOffset` cross-checked against this suite's | ✅ |
 | 5905 §11.3 | The root-distance inputs a client needs: dispersion non-zero, delay and dispersion surviving the short-format round trip | ✅ |
 | 5905 §7.3 | Leap indicator 3 — an unsynchronized server must be refused as a time source | ✅ |
@@ -142,9 +146,9 @@ Not covered yet, in rough order of value:
   randomize all bits of receive and transmit timestamps in their requests", to make the origin
   timestamp harder for an off-path attacker to guess. Norn's client sends its clock readings
   as they are.
-- **RFC 8633 operational behaviour** — poll-interval discipline, acting on a Kiss-o'-Death
-  rather than merely reading it, and the rate limiting a public-facing server needs. Norn
-  recognizes every kiss code and honours none of them; there is no rate limiter at all.
+- **RFC 8633's remaining operational advice** — § 5.1's information leakage (an access list on
+  who may query at all), and § 5.2's panic threshold, which needs a Norn that steers a clock
+  rather than only measuring one. § 5.4, the rate limiting and the kiss codes, is done.
 - **AEAD_AES_128_GCM_SIV (algorithm 30)** — worth more than AES-SIV-CMAC-384 and -512, which
   nothing in the field negotiates. chrony offers 30 and its cookies are smaller for it. All
   three need implementing in Norn first, and the reference codec would have to grow the same

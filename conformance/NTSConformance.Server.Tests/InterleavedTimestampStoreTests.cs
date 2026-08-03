@@ -134,9 +134,13 @@ public class InterleavedTimestampStoreTests
     /// comparison across sizes can see the shape.
     /// </para>
     /// <para>
-    /// Sixteen times the table for four times the work is a deliberately loose threshold. A
-    /// linear implementation is off by the full factor of sixteen and fails wide; the slack is
-    /// there so that scheduling noise on a busy machine cannot fail a correct one.
+    /// The two sizes are sixty-four times apart, and the threshold four. That gap looks
+    /// unnecessarily wide and is not: measured against a scan, a sixteenfold larger table cost
+    /// only about five times as much per insertion, because the per-entry cost of a scan is
+    /// itself smaller in a bigger table. Sixteen times therefore left a linear implementation
+    /// sitting close enough to the threshold to slip under it on a quiet run. Sixty-four times
+    /// puts it an order of magnitude clear, while a constant-time implementation stays at one
+    /// whatever the machine is doing.
     /// </para>
     /// </summary>
     [Test]
@@ -169,14 +173,15 @@ public class InterleavedTimestampStoreTests
         InsertionsPerSecond(64);
 
         var small = InsertionsPerSecond(256);
-        var large = InsertionsPerSecond(4096);
+        var large = InsertionsPerSecond(16384);
 
         Assert.That(small / large,
                     Is.LessThan(4.0),
-                    $"a sixteenfold larger table cost {small / large:F1}× per insertion, which is " +
-                    $"the signature of a scan: {small:F0}/s at 256 entries against {large:F0}/s " +
-                    $"at 4096. Eviction has to be independent of the table size, because the " +
-                    $"table size is what a flood of forged source addresses controls.");
+                    $"a sixty-fourfold larger table cost {small / large:F1}× per insertion, which " +
+                    $"is the signature of a scan: {small:F0}/s at 256 entries against " +
+                    $"{large:F0}/s at 16384. Eviction has to be independent of the table size, " +
+                    $"because the table size is what a flood of forged source addresses " +
+                    $"controls.");
 
     }
 

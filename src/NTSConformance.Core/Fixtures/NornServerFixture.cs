@@ -76,6 +76,10 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// server itself; switching it off is how a test shows an assertion is detecting the mode
     /// rather than something inherent in the exchange.
     /// </param>
+    /// <param name="rateLimiter">
+    /// An RFC 8633 § 5.4 rate limiter. Null by default, as in the server itself — every other
+    /// fixture in this suite sends bursts that a limiter would be right to refuse.
+    /// </param>
     public static Task<NornServerFixture> StartAsync(TimeSpan?        masterKeyLifetime            = null,
                                                     TimeSpan?        masterKeyRotationGracePeriod  = null,
                                                     TestCertificate? certificate                   = null,
@@ -84,7 +88,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     IIPAddress?      listenIPAddress               = null,
                                                     TimeProvider?    timeProvider                  = null,
                                                     TimeSpan?        clockResolution               = null,
-                                                    InterleavedModePolicy? interleavedMode         = null)
+                                                    InterleavedModePolicy? interleavedMode         = null,
+                                                    NTPRateLimiter?  rateLimiter                   = null)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 
@@ -103,7 +108,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                                 ListenIPAddress:               listenIPAddress,
                                 TimeProvider:                  timeProvider,
                                 ClockResolution:               clockResolution,
-                                InterleavedMode:               interleavedMode
+                                InterleavedMode:               interleavedMode,
+                                RateLimiter:                   rateLimiter
                             );
 
                await server.Start();

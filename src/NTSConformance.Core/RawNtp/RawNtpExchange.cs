@@ -27,6 +27,26 @@ public static class RawNtpExchange
                                         IPPort          port,
                                         AddressFamily?  addressFamily   = null,
                                         TimeSpan?       timeout         = null)
+
+        => TryExchange(request, host, port, addressFamily, timeout)
+               ?? throw new SocketException((Int32) SocketError.TimedOut);
+
+
+    /// <summary>
+    /// Send a packet and read the reply, or return null if none comes.
+    /// </summary>
+    /// <remarks>
+    /// Silence is a result rather than a failure here, because for some of what this suite
+    /// checks silence is the correct behaviour: a rate-limited request is meant to be dropped,
+    /// and RFC 8633 § 5.4's advice to be sparing with Kiss-o'-Death packets means most refusals
+    /// arrive as nothing at all. Waiting for a reply that should never come is slow, so keep the
+    /// timeout short when that is the expected outcome.
+    /// </remarks>
+    public static RawNtpPacket? TryExchange(RawNtpPacket    request,
+                                            String          host,
+                                            IPPort          port,
+                                            AddressFamily?  addressFamily   = null,
+                                            TimeSpan?       timeout         = null)
     {
 
         var family    = addressFamily ?? AddressFamily.InterNetwork;
@@ -42,7 +62,20 @@ public static class RawNtpExchange
                                            : IPAddress.Any,
                                        0);
 
-        var received  = udp.Receive(ref remote);
+        Byte[] received;
+
+        try
+        {
+            received = udp.Receive(ref remote);
+        }
+        catch (SocketException e) when (e.SocketErrorCode is SocketError.TimedOut
+                                                          or SocketError.ConnectionReset)
+        {
+            // ConnectionReset as well as TimedOut: on Windows a connected UDP socket surfaces an
+            // ICMP port-unreachable as a receive error, which is the same "no answer" from this
+            // side of the exchange.
+            return null;
+        }
 
         if (!RawNtpReader.TryRead(received, out var response, out var errorResponse, RawNtpReadOptions.Lenient))
             throw new InvalidOperationException($"the response could not be read: {errorResponse}\n{Bytes.Dump(received)}");
