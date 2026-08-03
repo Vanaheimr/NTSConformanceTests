@@ -41,9 +41,9 @@ Verified state: **268 tests green** in the hermetic gate, nothing red, nothing t
 
 Interoperability is confirmed against three independent implementations. **chronyd 4.6.1** in
 both directions — Norn's client against chronyd's NTS server, and chronyd as a client taking a
-real measurement from Norn's. **ntpd-rs 1.4** as an NTS client against Norn's server, which is
-the only test here where somebody else's code validates Norn's certificate and completes a full
-NTS exchange against it. And **GnuTLS** against the NTS-KE endpoint. Plus **Cloudflare**, **PTB**
+real measurement from Norn's. **ntpd-rs 1.4** in both directions too — as an NTS client
+against Norn's server, the only test here where somebody else's code validates Norn's
+certificate, and as an NTS server for Norn's client to talk to. And **GnuTLS** against the NTS-KE endpoint. Plus **Cloudflare**, **PTB**
 and **Netnod** with certificate validation switched on.
 
 That spread is deliberate rather than thorough-looking: Norn's own client, GnuTLS, SChannel and
