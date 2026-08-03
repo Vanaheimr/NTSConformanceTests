@@ -39,12 +39,17 @@ ones.
 Verified state: **268 tests green** in the hermetic gate, nothing red, nothing tagged
 `KnownIssue`.
 
-Interoperability is confirmed against three independent implementations. **chronyd 4.6.1** in
-both directions — Norn's client against chronyd's NTS server, and chronyd as a client taking a
-real measurement from Norn's. **ntpd-rs 1.4** in both directions too — as an NTS client
-against Norn's server, the only test here where somebody else's code validates Norn's
-certificate, and as an NTS server for Norn's client to talk to. And **GnuTLS** against the NTS-KE endpoint. Plus **Cloudflare**, **PTB**
-and **Netnod** with certificate validation switched on.
+Interoperability is confirmed against three independent implementations, in every direction:
+
+| | Norn as client | Norn as NTS server | Norn as plain NTP server |
+|---|:--:|:--:|:--:|
+| **chronyd 4.6.1** | yes | yes | yes |
+| **ntpd-rs 1.4** | yes | yes | yes |
+| **gnutls-cli** | — | NTS-KE and ALPN | — |
+
+Both external implementations validate Norn's certificate and authenticate its replies, through
+GnuTLS and rustls respectively. Public servers — **Cloudflare**, **PTB**, **Netnod** — are
+queried with certificate validation switched on.
 
 That spread is deliberate rather than thorough-looking: Norn's own client, GnuTLS, SChannel and
 rustls disagree about what to accept, and every high-value defect this suite found was visible to
