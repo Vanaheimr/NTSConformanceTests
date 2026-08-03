@@ -89,6 +89,23 @@ public sealed record TestCertificate(X509Certificate         Certificate,
     }
 
 
+    /// <summary>
+    /// The certificate as the BCL sees it, which is the form a TLS callback is handed.
+    /// </summary>
+    /// <remarks>
+    /// Built here rather than kept alongside the BouncyCastle one so that both are the same
+    /// bytes by construction: a test asserting how a certificate is read must be reading the
+    /// certificate that was actually presented, not a second one built from the same arguments.
+    /// </remarks>
+    public System.Security.Cryptography.X509Certificates.X509Certificate2 ToDotNet()
+
+        // Fully qualified: this file lives among BouncyCastle's X509 types, whose
+        // X509Certificate shares its name with the BCL's.
+        => System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(
+               Certificate.GetEncoded()
+           );
+
+
     /// <summary>The certificate as PEM, for tools that read a trust file (chrony's ntstrustedcerts).</summary>
     public String ToPem()
     {

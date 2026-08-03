@@ -7,7 +7,7 @@ Covers **RFC 5905** (NTPv4), **RFC 7822** (extension fields), **RFC 8915** (Netw
 Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC), **RFC 3686** (AES-CTR),
 **RFC 8446** (TLS 1.3), **RFC 7301** (ALPN), **RFC 5480** (EC key encoding), **RFC 9109**
 (port randomization), **RFC 9748** (the NTP registries), **RFC 9769** (interleaved modes),
-**RFC 8633** (the NTP BCP)
+**RFC 8633** (the NTP BCP), **RFC 9525** (service identity in TLS)
 and **RFC 7384** (security requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is asserted,
 what is planned, and what is deliberately out of scope.
 
@@ -38,7 +38,7 @@ Two were reachable only from outside Norn — its own client and GnuTLS were len
 the places it was wrong — which is why the interop projects exist and not only the conformance
 ones.
 
-Verified state: **374 tests green** in the hermetic gate, nothing red, nothing tagged
+Verified state: **385 tests green** in the hermetic gate, nothing red, nothing tagged
 `KnownIssue`.
 
 Interoperability is confirmed against three independent implementations, in every direction:
@@ -136,6 +136,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 7301 | ALPN `ntske/1` selected and echoed, verified against two independent TLS stacks | ✅ |
 | 5480 §2.1.1 | EC public keys encoded as a named curve rather than explicit parameters; a certificate carrying explicit parameters is unusable by SChannel/CNG | ✅ |
 | 9109 | Source port randomization: queries leave from an ephemeral port, never 123, and not the same one twice | ✅ |
+| 9525 §6.3 | Certificate identity: which host names a certificate speaks for — a wildcard covers exactly one label, never the apex and never two; partial and misplaced wildcards are ignored rather than guessed at; the Common Name is not a fallback | ✅ |
 | 6125 | Certificate identity: the configured certificate is presented, and accepted by a third-party client | 🟡 |
 
 ### Planned
