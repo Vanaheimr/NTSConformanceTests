@@ -1,0 +1,80 @@
+name: Nightly
+
+# The counterpart to ci.yml. That workflow gates every push and leaves the public-server
+# tests out, because a gate whose red can also mean "the runner could not reach Cloudflare"
+# stops being read as a gate. Those tests are still worth running — just not against a merge.
+#
+# Two things worth knowing about scheduled workflows: they only ever run on the default
+# branch, and GitHub disables them after 60 days without repository activity. If this stops
+# reporting, that is the first thing to check.
+on:
+  schedule:
+    # 03:23 UTC. Off the hour on purpose: GitHub's scheduler is busiest then and delays
+    # runs by tens of minutes.
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  full-suite:
+    runs-on: windows-latest
+    steps:
+      - name: Allow long paths
+        run: git config --system core.longpaths true
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build NTSConformanceTests.slnx --configuration Release
+
+      # The same set the gate runs. Repeating it nightly still earns its minutes: it
+      # catches tests that only fail sometimes — the randomised clock-displacement cases
+      # draw fresh values every run, and the loopback fixtures reserve real ports. Fatal:
+      # a red here is a real regression.
+      - name: Test (hermetic gate)
+        timeout-minutes: 45
+        run: dotnet test NTSConformanceTests.slnx --configuration Release --no-build --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue" --logger "console;verbosity=normal"
+
+      # The public NTS servers: real NTS-KE handshakes and authenticated NTP queries
+      # against Cloudflare, PTB and Netnod, with certificate validation switched on.
+      #
+      # Informational on purpose. A hosted runner is not a normal client: datacentre
+      # egress on UDP/123 and TCP/4460 is frequently blocked or rate-limited, and these
+      # tests already skip rather than fail when a server is simply unreachable — 7 of 9
+      # pass on a residential line with 2 skipped. A failure here means "the runner could
+      # not ask", which says nothing about Norn, so it must not be able to turn the night
+      # red. Read the numbers below for a trend; a sudden all-fail IS worth investigating,
+      # and so is a pass rate that quietly drops while the network is fine.
+      - name: Public NTS servers (informational)
+        continue-on-error: true
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set +e
+          dotnet test NTSConformanceTests.slnx --configuration Release --no-build \
+            --filter "TestCategory=Online" --logger "console;verbosity=normal" 2>&1 | tee online.txt
+          {
+            echo '## Public NTS servers (informational)'
+            echo
+            echo 'Network-dependent: failures here reflect runner egress, not Norn.'
+            echo
+            echo '```'
+            grep -E "Passed!|Failed!|Bestanden!|Total tests|Passed:|Failed:" online.txt || tail -5 online.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      # Not covered here, and deliberately so: the WSL interoperability lane
+      # (TestCategory=WSL) drives chronyd and gnutls-cli in both directions against Norn.
+      # Hosted runners have no WSL, so it cannot run on GitHub at all — it stays a local
+      # check. Running it is one line, and the README says which packages it needs:
+      #   dotnet test NTSConformanceTests.slnx --filter "TestCategory=WSL"
