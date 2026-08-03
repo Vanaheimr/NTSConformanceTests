@@ -36,13 +36,15 @@ and now guards against regression; the reasoning for each is in the commit that 
 
 Two were reachable only from outside Norn — its own client and GnuTLS were lenient in exactly
 the places it was wrong — which is why the interop projects exist and not only the conformance
-ones. A later one was reachable from nowhere at all until the harness grew a server that keeps
-what a client sent: Norn's client used to complete a key exchange with a peer that never selected
-the `ntske/1` ALPN protocol, and report success. It is counted separately above because §3 and §4
-describe the ALPN agreement without saying what a client does when it is absent — a weakness
-rather than a plain violation, and now refused either way.
+ones. A later pair was reachable from nowhere at all until the harness grew a server that keeps
+what a client sent: neither end of Norn insisted on the `ntske/1` ALPN protocol. The client
+completed a key exchange with a peer that never selected it and reported success; the server
+handed out cookies to a client that never offered it. Both are counted separately above because
+§3 and §4 describe the ALPN agreement without saying what either end does when the other does not
+play along — a weakness rather than a plain violation, and refused on both sides now, as chrony
+has always done.
 
-Verified state: **510 tests green** in the hermetic gate, and no open defect — the one
+Verified state: **512 tests green** in the hermetic gate, and no open defect — the one
 `KnownIssue` this suite has ever carried, AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
@@ -130,7 +132,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | RFC | Focus | |
 |---|---|:--:|
 | §4 | NTS-KE over TLS 1.3 with ALPN `ntske/1`, offered and echoed; TLS 1.2 refused | ✅ |
-| §3, §4 | A server that completes the handshake without selecting `ntske/1` is refused by the client, before a single record is sent to it | ✅ |
+| §3, §4 | `ntske/1` as a precondition on both sides: a server that completes the handshake without selecting it is refused by the client before a single record is sent, and a client that offers no ALPN extension is refused by the server during the ClientHello | ✅ |
 | §4.1 | Record framing: 16-bit type with the critical bit separated out, body length excluding the header, a body overrunning the message rejected, unknown records rejected only when critical | ✅ |
 | §4.1.1 | End of Message: present, critical, empty, and last — and, in the client's request, with nothing following it on the wire | ✅ |
 | §4.1, §4.1.2, §4.1.5 | The client's own request, read off the wire by a server that keeps it: one critical Next Protocol record naming NTPv4, the offered algorithms in the client's preference order, no server-to-client records | ✅ |
