@@ -31,6 +31,7 @@ public class NtpdRsAsClientTests
     private NornServerFixture?  fixture;
     private String?             hostAddress;
     private String?             configurationPathInWsl;
+    private String?             plainConfigurationPathInWsl;
 
 
     [OneTimeSetUp]
@@ -90,6 +91,24 @@ public class NtpdRsAsClientTests
         File.WriteAllText(configurationPath, configuration);
         configurationPathInWsl = Wsl.ToWslPath(configurationPath);
 
+        // The same client without NTS, straight at the NTP port. Its observation socket has to
+        // differ from the one above, or the two runs fight over the same path.
+        var plainConfiguration = String.Join(
+                                     Environment.NewLine,
+                                     "[observability]",
+                                     "log-level = \"info\"",
+                                     "observation-path = \"/tmp/norn-ntpd-rs/observe-plain\"",
+                                     "",
+                                     "[[source]]",
+                                     "mode = \"server\"",
+                                     $"address = \"{hostAddress}:{fixture.NTPPort}\"",
+                                     ""
+                                 );
+
+        var plainConfigurationPath = Path.Combine(directory, "ntp-plain.toml");
+        File.WriteAllText(plainConfigurationPath, plainConfiguration);
+        plainConfigurationPathInWsl = Wsl.ToWslPath(plainConfigurationPath);
+
     }
 
 
@@ -108,22 +127,100 @@ public class NtpdRsAsClientTests
     /// time to complete NTS-KE and take a measurement, and then asked for its status. One source
     /// is below its agreement threshold, so it observes without ever stepping the WSL clock.
     /// </summary>
-    private Wsl.Result RunNtpdRs()
+    private Wsl.Result RunNtpdRs(String? configuration = null)
     {
 
+        var configurationPath = configuration ?? configurationPathInWsl;
+
         return Wsl.Run(
-                   "mkdir -p /tmp/norn-ntpd-rs && "                                             +
-                   $"ntp-daemon -c {configurationPathInWsl} > /tmp/norn-ntpd-rs/log 2>&1 & "    +
-                   "DAEMON=$!; "                                                                +
-                   "sleep 12; "                                                                 +
-                   "echo '===== ntp-ctl status ====='; "                                        +
-                   $"ntp-ctl status -c {configurationPathInWsl} 2>&1 || true; "                 +
-                   "kill $DAEMON 2>/dev/null; "                                                 +
-                   "echo '===== daemon log ====='; "                                            +
+                   "mkdir -p /tmp/norn-ntpd-rs && "                                          +
+                   $"ntp-daemon -c {configurationPath} > /tmp/norn-ntpd-rs/log 2>&1 & "      +
+                   "DAEMON=$!; "                                                             +
+                   "sleep 12; "                                                              +
+                   "echo '===== ntp-ctl status ====='; "                                     +
+                   $"ntp-ctl status -c {configurationPath} 2>&1 || true; "                   +
+                   "kill $DAEMON 2>/dev/null; "                                              +
+                   "echo '===== daemon log ====='; "                                         +
                    "cat /tmp/norn-ntpd-rs/log",
                    TimeSpan.FromSeconds(60),
                    asRoot: true
                );
+
+    }
+
+
+    /// <summary>
+    /// Pull the offset out of an ntp-ctl source line, which reads
+    /// <c>172.17.80.1:34567/172.17.80.1:34567 (1): +0.003586±0.102581(±0.010523)s</c>. Returns
+    /// null when the source produced no measurement at all, which is what an unusable server
+    /// looks like.
+    ///
+    /// The sign is explicit in that output and may be either — a pattern that only allowed a
+    /// minus matched the negative offset it was written against and then read a perfectly good
+    /// positive measurement as "no measurement at all".
+    /// </summary>
+    private static Double? MeasuredOffsetSeconds(String status)
+    {
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+                        status,
+                        @"\(\d+\):\s*([+-]?\d+\.\d+)±"
+                    );
+
+        return match.Success &&
+               Double.TryParse(match.Groups[1].Value,
+                               System.Globalization.NumberStyles.Float,
+                               System.Globalization.CultureInfo.InvariantCulture,
+                               out var offset)
+                   ? offset
+                   : null;
+
+    }
+
+
+    /// <summary>
+    /// ntpd-rs as a plain NTPv4 client — no NTS anywhere in it.
+    ///
+    /// A second opinion on the path that broke once already: the NTS NAK added for the
+    /// unusable-cookie case also caught every plain NTP request, and chronyd was the only client
+    /// that noticed. Norn's plain answers now have to satisfy a Rust implementation's sanity
+    /// rules as well as chrony's C ones.
+    ///
+    /// The assertion is on the measurement rather than on the traffic. Norn's counters only show
+    /// that requests arrived and answers went out — exactly what happened when chronyd was
+    /// refusing every one of those answers as a Kiss-o'-Death. An offset in ntp-ctl's output
+    /// means ntpd-rs took the reply and used it.
+    /// </summary>
+    [Test]
+    public void NtpdRs_AcceptsNornOverPlainNtp()
+    {
+
+        if (fixture is null)
+        {
+            Assert.Ignore("the server fixture did not start");
+            return;
+        }
+
+        var before   = fixture.Server.Metrics.NTPRequestsReceived;
+        var result   = RunNtpdRs(plainConfigurationPathInWsl);
+        var received = fixture.Server.Metrics.NTPRequestsReceived - before;
+
+        if (received == 0)
+            Assert.Ignore($"ntpd-rs's plain NTP requests never reached the server, so nothing " +
+                          $"can be concluded about the replies.\n{result.StdOut}");
+
+        var offset = MeasuredOffsetSeconds(result.StdOut);
+
+        Assert.That(offset,
+                    Is.Not.Null,
+                    $"ntpd-rs took {received} reply/replies from Norn and produced no measurement " +
+                    $"from any of them — it received answers and refused them.\n" +
+                    $"server metrics: {fixture.Server.Metrics}\n{result.StdOut}");
+
+        Assert.That(Math.Abs(offset!.Value),
+                    Is.LessThan(5.0),
+                    $"ntpd-rs measured an offset of {offset} s against a server reading the same " +
+                    $"machine's clock — the timestamps are likely mis-encoded.\n{result.StdOut}");
 
     }
 
