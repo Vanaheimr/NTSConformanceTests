@@ -38,7 +38,7 @@ Two were reachable only from outside Norn — its own client and GnuTLS were len
 the places it was wrong — which is why the interop projects exist and not only the conformance
 ones.
 
-Verified state: **501 tests green** in the hermetic gate, and no open defect — the one
+Verified state: **509 tests green** in the hermetic gate, and no open defect — the one
 `KnownIssue` this suite has ever carried, AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
@@ -127,7 +127,8 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 |---|---|:--:|
 | §4 | NTS-KE over TLS 1.3 with ALPN `ntske/1`, offered and echoed; TLS 1.2 refused | ✅ |
 | §4.1 | Record framing: 16-bit type with the critical bit separated out, body length excluding the header, a body overrunning the message rejected, unknown records rejected only when critical | ✅ |
-| §4.1.1 | End of Message: present, critical, empty, and last | ✅ |
+| §4.1.1 | End of Message: present, critical, empty, and last — and, in the client's request, with nothing following it on the wire | ✅ |
+| §4.1, §4.1.2, §4.1.5 | The client's own request, read off the wire by a server that keeps it: one critical Next Protocol record naming NTPv4, the offered algorithms in the client's preference order, no server-to-client records | ✅ |
 | §4.1.2 | Next protocol negotiation: the response must be a subset of the request, and a request listing none is refused | ✅ |
 | §4.1.3 | Error records: unknown critical record → 0, malformed record stream → 1, sent rather than dropped in silence | ✅ |
 | §4.1.5 | AEAD negotiation: the selection comes from the client's list, the IDs match the IANA registry, and an offer of only an unsupported algorithm is refused | ✅ |
@@ -197,11 +198,14 @@ Not covered yet, in rough order of value:
 - **RFC 8633's remaining operational advice** — § 5.1's information leakage (an access list on
   who may query at all), and § 5.2's panic threshold, which needs a Norn that steers a clock
   rather than only measuring one. § 5.4, the rate limiting and the kiss codes, is done.
-- **A capturing NTS-KE server** — the suite can send any record stream to a server and read the
-  reply, but nothing terminates TLS on the *client's* far side, so no test can assert what Norn's
-  client actually put in a request. Everything client-side is inferred from how a server answers.
-  It would also unlock the TLS-level and error-path tests that the scripted-server design was
-  always meant to carry.
+- **Whether Norn's client must refuse a server that never selected `ntske/1`** — it currently does
+  not: the exchange completes and reports success. §3 calls ALPN "integral to NTS" and REQUIRED
+  for interoperability, and §4 describes the handshake as one the server accepts `ntske/1` in, but
+  neither says what a client does when it does not, so this is a weakness rather than a plain
+  violation. chrony's client checks. Found by the scripted server on the day it was written.
+- **Client-side error and warning paths** — the scripted server can now reply with anything at
+  all, including Error records, unknown critical records and truncated messages, which is how the
+  client's refusals get tested against a peer rather than against a unit.
 - **AEAD_AES_256_GCM_SIV (algorithm 31)** — implemented and vector-correct, and never run against
   an implementation other than this one, so it stays out of `NTSAEAD.Supported`. Nothing reachable
   from here offers it.
@@ -242,7 +246,8 @@ Deliberately not covered, and why:
 build/CommonTestSettings.props           shared MSBuild settings for every test project
 src/NTSConformance.Core/                 the harness
   RawNtp/                                independent RFC 5905 + 7822 codec, and AES-SIV
-  RawNtsKe/                              independent RFC 8915 §4 record codec
+  RawNtsKe/                              independent RFC 8915 §4 record codec, a raw client, and
+                                         a scripted server that keeps what the client sent
   Fixtures/                              Norn and chronyd server fixtures, certificates, DebugX capture
   TestClock.cs                           a TimeProvider the test controls: frozen, or displaced
   UdpRelayProbe.cs                       a loopback socket that records who sent what, and can pass it on

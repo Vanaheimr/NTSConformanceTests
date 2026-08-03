@@ -106,6 +106,56 @@ public sealed record TestCertificate(X509Certificate         Certificate,
            );
 
 
+    /// <summary>
+    /// The certificate <em>and</em> its private key, in the form <c>SslStream</c> needs to act as
+    /// a server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Via a PKCS#12 round trip rather than <c>CopyWithPrivateKey</c>, and not for tidiness. On
+    /// Windows an <c>SslStream</c> server hands the certificate to SChannel, which will not use
+    /// an ephemeral CNG key — the handshake fails with "the credentials supplied to the package
+    /// were not recognized", which says nothing about the key at all. Importing a PFX without
+    /// <c>EphemeralKeySet</c> gives SChannel a key it will accept.
+    /// </para>
+    /// <para>
+    /// BouncyCastle builds the PKCS#12 because it already holds the key; converting
+    /// <see cref="ECPrivateKeyParameters"/> to <c>ECParameters</c> by hand means getting the
+    /// fixed-width encoding of D and the public point right, and getting it wrong produces a key
+    /// that is silently a different key.
+    /// </para>
+    /// </remarks>
+    public System.Security.Cryptography.X509Certificates.X509Certificate2 ToDotNetWithPrivateKey()
+    {
+
+        const String password = "nts-conformance";
+
+        var store = new Org.BouncyCastle.Pkcs.Pkcs12StoreBuilder().Build();
+
+        store.SetKeyEntry(
+            "nts-ke",
+            new Org.BouncyCastle.Pkcs.AsymmetricKeyEntry(PrivateKey),
+            [ new Org.BouncyCastle.Pkcs.X509CertificateEntry(Certificate) ]
+        );
+
+        using var buffer = new MemoryStream();
+        store.Save(buffer, password.ToCharArray(), new SecureRandom());
+
+        // BouncyCastle emits indefinite-length BER, which .NET's PKCS#12 reader rejects.
+        var pkcs12 = Org.BouncyCastle.Pkcs.Pkcs12Utilities.ConvertToDefiniteLength(
+                         buffer.ToArray(),
+                         password.ToCharArray()
+                     );
+
+        return System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12(
+                   pkcs12,
+                   password,
+                   System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.Exportable
+               );
+
+    }
+
+
     /// <summary>The certificate as PEM, for tools that read a trust file (chrony's ntstrustedcerts).</summary>
     public String ToPem()
     {
