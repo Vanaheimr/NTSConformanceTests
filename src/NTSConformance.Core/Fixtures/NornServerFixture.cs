@@ -71,6 +71,11 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// <param name="clockResolution">
     /// The clock granularity to report, overriding what the server measures.
     /// </param>
+    /// <param name="interleavedMode">
+    /// Whether the server answers RFC 9769 interleaved requests. On by default, as in the
+    /// server itself; switching it off is how a test shows an assertion is detecting the mode
+    /// rather than something inherent in the exchange.
+    /// </param>
     public static Task<NornServerFixture> StartAsync(TimeSpan?        masterKeyLifetime            = null,
                                                     TimeSpan?        masterKeyRotationGracePeriod  = null,
                                                     TestCertificate? certificate                   = null,
@@ -78,7 +83,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     IPPort?          advertisedNTPPort             = null,
                                                     IIPAddress?      listenIPAddress               = null,
                                                     TimeProvider?    timeProvider                  = null,
-                                                    TimeSpan?        clockResolution               = null)
+                                                    TimeSpan?        clockResolution               = null,
+                                                    Boolean          interleavedMode               = true)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 
@@ -96,7 +102,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                                 TLSPrivateKey:                 certificate?.PrivateKey,
                                 ListenIPAddress:               listenIPAddress,
                                 TimeProvider:                  timeProvider,
-                                ClockResolution:               clockResolution
+                                ClockResolution:               clockResolution,
+                                InterleavedMode:               interleavedMode
                             );
 
                await server.Start();
@@ -117,8 +124,13 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// The clock the client stamps its requests from — independent of the server's, which is
     /// how a client-side clock can be checked against a server that keeps correct time.
     /// </param>
-    public NTSClient CreateClient(TimeSpan?      timeout        = null,
-                                  TimeProvider?  timeProvider   = null)
+    /// <param name="interleavedMode">
+    /// Whether the client uses the RFC 9769 interleaved mode. Off by default, as in the client
+    /// itself: it needs an association that outlives a single query.
+    /// </param>
+    public NTSClient CreateClient(TimeSpan?      timeout          = null,
+                                  TimeProvider?  timeProvider     = null,
+                                  Boolean        interleavedMode  = false)
 
         => new (DomainName.Localhost,
                 NTSKE_Port:                  NTSKEPort,
@@ -127,6 +139,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                 Timeout:                     timeout,
                 RemoteCertificateValidator:  (sender, certificate, chain, tlsClient, policyErrors)
                                                  => TLSValidationResult.Success(),
+                InterleavedMode:             interleavedMode,
                 TimeProvider:                timeProvider);
 
 

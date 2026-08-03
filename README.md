@@ -6,8 +6,8 @@ implementation, plus interoperability tests against independent implementations.
 Covers **RFC 5905** (NTPv4), **RFC 7822** (extension fields), **RFC 8915** (Network Time
 Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC), **RFC 3686** (AES-CTR),
 **RFC 8446** (TLS 1.3), **RFC 7301** (ALPN), **RFC 5480** (EC key encoding), **RFC 9109**
-(port randomization), **RFC 9748** (the NTP registries) and **RFC 7384** (security
-requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is asserted,
+(port randomization), **RFC 9748** (the NTP registries), **RFC 9769** (interleaved modes)
+and **RFC 7384** (security requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is asserted,
 what is planned, and what is deliberately out of scope.
 
 ## Why a second implementation
@@ -37,14 +37,14 @@ Two were reachable only from outside Norn — its own client and GnuTLS were len
 the places it was wrong — which is why the interop projects exist and not only the conformance
 ones.
 
-Verified state: **293 tests green** in the hermetic gate, nothing red, nothing tagged
+Verified state: **316 tests green** in the hermetic gate, nothing red, nothing tagged
 `KnownIssue`.
 
 Interoperability is confirmed against three independent implementations, in every direction:
 
 | | Norn as client | Norn as NTS server | Norn as plain NTP server |
 |---|:--:|:--:|:--:|
-| **chronyd 4.6.1** | yes | yes | yes |
+| **chronyd 4.6.1** | yes | yes | yes, incl. RFC 9769 `xleave` |
 | **ntpd-rs 1.4** | yes | yes | yes |
 | **gnutls-cli** | — | NTS-KE and ALPN | — |
 
@@ -84,7 +84,8 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 9748 | The NTP registries as they now stand: every registered Kiss-o'-Death code and clock source is understood, codes are matched exactly, `X…` is never given a registered meaning, and unspecified extension fields stay inside 0xF000–0xFFFF | ✅ |
 | 5905 §9.1 | Peer, broadcast and multicast modes | — |
 | 5905 §10–§12 | Clock filter, selection, clustering and discipline | — |
-| 9769 | Interleaved client/server, symmetric and broadcast modes | — |
+| 9769 §2 | Interleaved client/server mode, both sides: mode selection by origin timestamp, the transmit timestamp taken after the previous response left, unique receive timestamps, one interleaved answer per receive timestamp, and a client association that survives loss and then gives up | ✅ |
+| 9769 §3, §4 | Interleaved symmetric and broadcast modes | — |
 | 5905 App. A | Symmetric-key MAC: the Key Identifier and Message Digest fields parse, but are never emitted | — |
 
 ### Network Time Security — RFC 8915
@@ -136,10 +137,10 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 
 Not covered yet, in rough order of value:
 
-- **RFC 9769 interleaved modes** — published May 2025, and the only new wire functionality to
-  reach RFC status since this suite was written. chrony has had it for years behind
-  `xleave`, which makes the interop test straightforward once Norn's server can answer that
-  way. Norn does not implement it.
+- **RFC 9769 § 6's timestamp randomization** — "Clients using the interleaved mode SHOULD
+  randomize all bits of receive and transmit timestamps in their requests", to make the origin
+  timestamp harder for an off-path attacker to guess. Norn's client sends its clock readings
+  as they are.
 - **RFC 8633 operational behaviour** — poll-interval discipline, acting on a Kiss-o'-Death
   rather than merely reading it, and the rate limiting a public-facing server needs. Norn
   recognizes every kiss code and honours none of them; there is no rate limiter at all.
@@ -195,7 +196,7 @@ conformance/
   NTSConformance.Crypto.Tests/           RFC 5297 / 4493 vectors, differential vs reference
   NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, server negotiation, warnings, certificates
   NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, where its query goes
-  NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock
+  NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock, interleaved mode
   NTSConformance.Cookies.Tests/          RFC 8915 §6 — opacity, forgery, rotation
 interop/
   NTSInterop.LinuxTools.Tests/           chronyd, ntpd-rs and gnutls-cli via WSL
