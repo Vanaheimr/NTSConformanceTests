@@ -173,8 +173,19 @@ public class NtpdRsNtsServerTests
         var response = result.Response!;
 
         Assert.Multiple(() => {
-            Assert.That(response.C2SKey.Length, Is.EqualTo(32), "AES-SIV-CMAC-256 uses a 32-octet C2S key");
-            Assert.That(response.S2CKey.Length, Is.EqualTo(32), "AES-SIV-CMAC-256 uses a 32-octet S2C key");
+            // Against whatever was negotiated. ntpd-rs and chronyd need not choose the same
+            // algorithm from the same offer, and neither is wrong for it.
+            var keyLength = NTSAEAD.KeyLength(response.AEADAlgorithm);
+
+            Assert.That(keyLength,
+                        Is.Not.Null,
+                        $"ntpd-rs chose {response.AEADAlgorithm.AsText()}, which Norn cannot perform");
+
+            Assert.That(response.C2SKey.Length, Is.EqualTo(keyLength),
+                        $"{response.AEADAlgorithm.AsText()} C2S key length");
+
+            Assert.That(response.S2CKey.Length, Is.EqualTo(keyLength),
+                        $"{response.AEADAlgorithm.AsText()} S2C key length");
             Assert.That(response.C2SKey,        Is.Not.EqualTo(response.S2CKey).AsCollection,
                         "the two directions must derive different keys");
             Assert.That(response.Cookies.Any(), Is.True, "NTS-KE must return at least one cookie");

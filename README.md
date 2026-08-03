@@ -38,8 +38,9 @@ Two were reachable only from outside Norn — its own client and GnuTLS were len
 the places it was wrong — which is why the interop projects exist and not only the conformance
 ones.
 
-Verified state: **426 tests green** in the hermetic gate, nothing red, nothing tagged
-`KnownIssue`.
+Verified state: **487 tests green** in the hermetic gate, and one open defect pinned by a
+deliberately-red `KnownIssue` test — AES-128-GCM-SIV against chronyd, described under
+[Planned](#planned).
 
 Interoperability is confirmed against three independent implementations, in every direction:
 
@@ -125,6 +126,8 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 3686 | CTR mode with a full 128-bit counter increment, and SIV's counter masking | ✅ |
 | 7384 | No key material in logs; authentication failure is constant-time and typed | ✅ |
 | — | Differential: every operation cross-checked against an independent implementation, both directions | ✅ |
+| 8452 | AES-GCM-SIV: all 24 published AEAD_AES_128_GCM_SIV vectors, encrypt and decrypt | ✅ |
+| 8915 §4.1.5 | AEAD negotiation with more than one candidate: the server chooses from the client's list in the client's order, skips what it cannot perform, and the choice reaches the exported key length, the cookie size and the authenticator's nonce length | ✅ |
 | 5297 | AES-SIV-CMAC-384 and -512 | — |
 | 5116, 5282, 6655, 7253, 8452, 8439 | The other AEADs in the IANA registry — enumerated so they can be named in negotiation, none implemented | — |
 
@@ -164,10 +167,15 @@ Not covered yet, in rough order of value:
 - **RFC 8633's remaining operational advice** — § 5.1's information leakage (an access list on
   who may query at all), and § 5.2's panic threshold, which needs a Norn that steers a clock
   rather than only measuring one. § 5.4, the rate limiting and the kiss codes, is done.
-- **AEAD_AES_128_GCM_SIV (algorithm 30)** — worth more than AES-SIV-CMAC-384 and -512, which
-  nothing in the field negotiates. chrony offers 30 and its cookies are smaller for it. All
-  three need implementing in Norn first, and the reference codec would have to grow the same
-  variants to stay independent of it.
+- **Finishing AEAD_AES_128_GCM_SIV (algorithm 30)** — implemented, vector-correct against all
+  of RFC 8452 Appendix C.1, and working end to end between a Norn client and a Norn server:
+  16-octet keys, a 12-octet nonce, cookies 32 octets smaller. It does **not** interoperate with
+  chronyd, in either direction, while AES-SIV-CMAC-256 continues to. It is therefore
+  implemented but not offered — `NTSAEAD.Supported` is narrower than `NTSAEAD.Implemented` —
+  and the gap is pinned by the suite's one `KnownIssue` test. The remaining work is finding the
+  byte-level disagreement; the suspicion is the §5.1 exporter at a 16-octet length rather than
+  the AEAD itself, because a client and a server that derive the same wrong key agree perfectly.
+  An independent `RawAesGcmSiv` in the reference codec is the tool that would settle it.
 - **RFC 8915 §4.1.8's default of 123** — a key exchange that sends a Server Negotiation record
   and no Port Negotiation record obliges the client to assume 123. Norn's server always emits
   both, so proving this needs a scripted NTS-KE server that omits one.
@@ -290,7 +298,7 @@ dotnet run --project libs/Norn/NornCLI -- serve --port 12123 --ke-port 14460 --l
 | `WSL` | Needs WSL with chrony / ntpd-rs / gnutls installed |
 | `Loopback` | Drives a real in-process Norn server over loopback |
 | `Slow` | Runs longer than about five seconds |
-| `KnownIssue` | Pins an RFC requirement Norn violates — currently none |
+| `KnownIssue` | Pins an open defect — currently one: AES-128-GCM-SIV against chronyd |
 
 Tests whose prerequisites are missing call `Assert.Ignore` with the command needed to
 satisfy them, rather than failing.

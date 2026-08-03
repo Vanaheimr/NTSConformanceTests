@@ -80,6 +80,23 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// An RFC 8633 § 5.4 rate limiter. Null by default, as in the server itself — every other
     /// fixture in this suite sends bursts that a limiter would be right to refuse.
     /// </param>
+    /// <param name="aeadAlgorithms">
+    /// The AEAD algorithms the server agrees to. Left null it uses its own default, which is
+    /// narrower than what it can perform; naming one is how a test reaches an algorithm that is
+    /// implemented but not yet offered.
+    /// </param>
+    /// <param name="omitPortNegotiation">
+    /// Advertise the host without a port, so the key exchange sends an NTPv4 Server Negotiation
+    /// record and no NTPv4 Port Negotiation record.
+    /// </param>
+    /// <remarks>
+    /// That combination is the whole of RFC 8915 § 4.1.8's default: "If no record of this type
+    /// is sent, the client SHALL assume a default of 123." It looked for a while as though
+    /// proving it needed a scripted key-exchange server, because Norn's own always sends both
+    /// records — but it only sends the port record when the advertised URL carries one, and
+    /// Hermod registers the udp scheme with no default port. A port-less URL therefore produces
+    /// exactly the response the rule is about.
+    /// </remarks>
     public static Task<NornServerFixture> StartAsync(TimeSpan?        masterKeyLifetime            = null,
                                                     TimeSpan?        masterKeyRotationGracePeriod  = null,
                                                     TestCertificate? certificate                   = null,
@@ -89,7 +106,9 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     TimeProvider?    timeProvider                  = null,
                                                     TimeSpan?        clockResolution               = null,
                                                     InterleavedModePolicy? interleavedMode         = null,
-                                                    NTPRateLimiter?  rateLimiter                   = null)
+                                                    NTPRateLimiter?  rateLimiter                   = null,
+                                                    Boolean          omitPortNegotiation           = false,
+                                                    IEnumerable<AEADAlgorithms>? aeadAlgorithms    = null)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 
@@ -99,7 +118,9 @@ public sealed class NornServerFixture : IAsyncDisposable
                var server = new NTSServer(
                                 NTSKEPort:                     tcpPort,
                                 NTSPort:                       udpPort,
-                                ExternalURLs:                  [ URL.Parse($"udp://{host}:{port}") ],
+                                ExternalURLs:                  [ URL.Parse(omitPortNegotiation
+                                                                                  ? $"udp://{host}"
+                                                                                  : $"udp://{host}:{port}") ],
                                 MasterKeysFilePath:            null,
                                 MasterKeyLifetime:             masterKeyLifetime,
                                 MasterKeyRotationGracePeriod:  masterKeyRotationGracePeriod,
@@ -109,7 +130,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                                 TimeProvider:                  timeProvider,
                                 ClockResolution:               clockResolution,
                                 InterleavedMode:               interleavedMode,
-                                RateLimiter:                   rateLimiter
+                                RateLimiter:                   rateLimiter,
+                                SupportedAEADAlgorithms:       aeadAlgorithms
                             );
 
                await server.Start();
@@ -134,9 +156,15 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// Whether the client uses the RFC 9769 interleaved mode. Off by default, as in the client
     /// itself: it needs an association that outlives a single query.
     /// </param>
+    /// <param name="aeadAlgorithms">
+    /// The AEAD algorithms the client offers. Left null it offers everything it can perform, in
+    /// its own order — which is how it behaves in the field. Naming one is how a test reaches an
+    /// algorithm the client would not otherwise choose.
+    /// </param>
     public NTSClient CreateClient(TimeSpan?      timeout          = null,
                                   TimeProvider?  timeProvider     = null,
-                                  Boolean        interleavedMode  = false)
+                                  Boolean        interleavedMode  = false,
+                                  IEnumerable<AEADAlgorithms>? aeadAlgorithms = null)
 
         => new (DomainName.Localhost,
                 NTSKE_Port:                  NTSKEPort,
@@ -146,6 +174,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                 RemoteCertificateValidator:  (sender, certificate, chain, tlsClient, policyErrors)
                                                  => TLSValidationResult.Success(),
                 InterleavedMode:             interleavedMode,
+                OfferedAEADAlgorithms:       aeadAlgorithms,
                 TimeProvider:                timeProvider);
 
 

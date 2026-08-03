@@ -3,6 +3,8 @@ using NUnit.Framework;
 using NTSConformance.Core;
 using NTSConformance.Core.Fixtures;
 
+using org.GraphDefined.Vanaheimr.Norn.NTS;
+
 namespace NTSConformance.Server.Tests;
 
 /// <summary>
@@ -64,10 +66,28 @@ public class NtsRoundTripTests
 
         var ntsKeResponse = ntsKeResult.Response!;
 
+        // Against the algorithm that was actually negotiated, rather than a constant. This used
+        // to assert 32 octets outright, which was right for as long as AES-SIV-CMAC-256 was the
+        // only algorithm on offer and became wrong the day a second one was implemented — while
+        // still describing a session that works perfectly.
+        var expectedKeyLength = NTSAEAD.KeyLength(ntsKeResponse.AEADAlgorithm);
+
         Assert.Multiple(() => {
-            Assert.That(ntsKeResponse.C2SKey.Length,  Is.EqualTo(32), "AES-SIV-CMAC-256 uses a 32-octet C2S key");
-            Assert.That(ntsKeResponse.S2CKey.Length,  Is.EqualTo(32), "AES-SIV-CMAC-256 uses a 32-octet S2C key");
-            Assert.That(ntsKeResponse.Cookies.Any(),  Is.True,        "NTS-KE must return at least one cookie");
+
+            Assert.That(expectedKeyLength,
+                        Is.Not.Null,
+                        $"the server negotiated {ntsKeResponse.AEADAlgorithm.AsText()}, which this " +
+                        $"client cannot perform");
+
+            Assert.That(ntsKeResponse.C2SKey.Length,  Is.EqualTo(expectedKeyLength),
+                        $"{ntsKeResponse.AEADAlgorithm.AsText()} C2S key length");
+
+            Assert.That(ntsKeResponse.S2CKey.Length,  Is.EqualTo(expectedKeyLength),
+                        $"{ntsKeResponse.AEADAlgorithm.AsText()} S2C key length");
+
+            Assert.That(ntsKeResponse.Cookies.Any(),  Is.True,
+                        "NTS-KE must return at least one cookie");
+
         });
 
         var queryResult = await client.QueryTime(NTSKEResponse: ntsKeResponse,

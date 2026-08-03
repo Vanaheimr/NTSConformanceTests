@@ -59,7 +59,11 @@ public class ChronyNtsServerTests
     /// accepted explicitly rather than by disabling it — the point of the test is the NTS
     /// protocol, not the PKI.
     /// </summary>
-    private NTSClient CreateClient()
+    /// <param name="aeadAlgorithms">
+    /// What to offer chronyd. Left null the client offers everything it can perform, in its own
+    /// order, which is how it behaves in the field; naming one pins the negotiation.
+    /// </param>
+    private NTSClient CreateClient(IEnumerable<AEADAlgorithms>? aeadAlgorithms = null)
 
         => new (DomainName.Parse(chrony!.VmAddress),
                 NTSKE_Port:                  chrony.NTSKEPort,
@@ -67,7 +71,8 @@ public class ChronyNtsServerTests
                 IPVersionPreference:         IPVersionPreference.IPv4Only,
                 Timeout:                     TimeSpan.FromSeconds(15),
                 RemoteCertificateValidator:  (sender, certificate, chain, tlsClient, policyErrors)
-                                                 => TLSValidationResult.Success());
+                                                 => TLSValidationResult.Success(),
+                OfferedAEADAlgorithms:       aeadAlgorithms);
 
 
     /// <summary>
@@ -102,9 +107,16 @@ public class ChronyNtsServerTests
 
 
     /// <summary>
-    /// NTS-KE against chronyd: TLS 1.3, ALPN <c>ntske/1</c>, the RFC 8915 §4.1 record
-    /// framing, and the §5.1 exporter labels all have to line up for two 32-octet session
-    /// keys and a set of cookies to come out.
+    /// NTS-KE against chronyd: TLS 1.3, ALPN <c>ntske/1</c>, the RFC 8915 §4.1 record framing
+    /// and the §5.1 exporter labels all have to line up for two session keys and a set of
+    /// cookies to come out.
+    ///
+    /// <para>
+    /// The keys are asserted against the algorithm chronyd chose rather than a constant, which
+    /// is not a loosening but the point: this test asserted 32 octets until Norn implemented
+    /// AES-128-GCM-SIV, at which point chronyd — offered it — took it, and the exporter
+    /// correctly produced 16. A test written to a constant would have called that a regression.
+    /// </para>
     ///
     /// chronyd issues 8 cookies, which is the pool size RFC 8915 §5.7 suggests.
     /// </summary>
@@ -127,11 +139,17 @@ public class ChronyNtsServerTests
 
         Assert.Multiple(() => {
 
-            Assert.That(response.C2SKey.Length, Is.EqualTo(32),
-                        "AES-SIV-CMAC-256 derives a 32-octet client-to-server key");
+            var keyLength = NTSAEAD.KeyLength(response.AEADAlgorithm);
 
-            Assert.That(response.S2CKey.Length, Is.EqualTo(32),
-                        "AES-SIV-CMAC-256 derives a 32-octet server-to-client key");
+            Assert.That(keyLength,
+                        Is.Not.Null,
+                        $"chronyd chose {response.AEADAlgorithm.AsText()}, which Norn cannot perform");
+
+            Assert.That(response.C2SKey.Length, Is.EqualTo(keyLength),
+                        $"{response.AEADAlgorithm.AsText()} client-to-server key length");
+
+            Assert.That(response.S2CKey.Length, Is.EqualTo(keyLength),
+                        $"{response.AEADAlgorithm.AsText()} server-to-client key length");
 
             Assert.That(response.C2SKey, Is.Not.EqualTo(response.S2CKey).AsCollection,
                         "the two directions must use different keys — RFC 8915 §5.1 gives them different exporter contexts");
@@ -140,6 +158,106 @@ public class ChronyNtsServerTests
                         "chronyd should hand out cookies");
 
         });
+
+    }
+
+
+    /// <summary>
+    /// AES-128-GCM-SIV does not yet interoperate with chronyd, in either direction.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Norn implements the algorithm and matches all twenty-four of RFC 8452's published
+    /// vectors, encrypt and decrypt. A Norn client and a Norn server complete a full session on
+    /// it, with sixteen-octet keys, a twelve-octet nonce and cookies thirty-two octets smaller
+    /// than under AES-SIV-CMAC-256. Against chronyd, the key exchange agrees on the algorithm
+    /// and then every NTP packet fails: chronyd answers Norn's queries with an NTS NAK, and
+    /// Norn's server counts chronyd's requests as invalid. Under AES-SIV-CMAC-256 both
+    /// directions work, before and after the change.
+    /// </para>
+    /// <para>
+    /// What that pattern rules out is most of the surface. The primitive is right, or the
+    /// vectors would fail. The framing is right, or Norn would not read its own. The associated
+    /// data is right, or AES-SIV would fail too — it is the same code. What is left is the one
+    /// thing the two algorithms do differently that no Norn-to-Norn test can see: the RFC 8915
+    /// § 5.1 exporter is asked for sixteen octets instead of thirty-two, and a client and a
+    /// server that both derive the same wrong key agree with each other perfectly.
+    /// </para>
+    /// <para>
+    /// So the algorithm stays implemented and out of the default offer — see
+    /// <see cref="NTSAEAD.Supported"/> — and this test is the record of why. It is expected to
+    /// fail, and it is the thing that will say when the cause has been found.
+    /// </para>
+    /// </remarks>
+    [Test]
+    [Category(TestCategories.KnownIssue)]
+    public async Task Chronyd_AndGcmSiv_DoNotYetInteroperate()
+    {
+
+        if (chrony is null)
+        {
+            Assert.Ignore("chronyd is not running");
+            return;
+        }
+
+        var client  = CreateClient(aeadAlgorithms: [ AEADAlgorithms.AES_128_GCM_SIV ]);
+        var result  = await client.GetNTSKERecords();
+
+        Assert.That(result.Success, Is.True,
+                    $"the key exchange itself works and agrees on the algorithm: {result.ErrorMessage}");
+
+        Assert.That(result.Response!.AEADAlgorithm,
+                    Is.EqualTo(AEADAlgorithms.AES_128_GCM_SIV),
+                    "chronyd accepts the algorithm when it is the only one offered");
+
+        var query = await client.QueryTime(NTSKEResponse: result.Response!);
+
+        Assert.That(query.Success,
+                    Is.True,
+                    $"chronyd agreed on AES-128-GCM-SIV and then could not read the query. " +
+                    $"This is the open defect: {query.ErrorMessage}");
+
+    }
+
+
+    /// <summary>
+    /// And chronyd still works when Norn insists on the mandatory algorithm.
+    /// </summary>
+    /// <remarks>
+    /// The control for the test above, and worth having on its own: RFC 8915 § 5.1 makes
+    /// AES-SIV-CMAC-256 the one every implementation must have, so a client pinned to it has to
+    /// reach every server there is. It also shows that chronyd's choice above came from Norn's
+    /// offer rather than from chronyd having only one option.
+    /// </remarks>
+    [Test]
+    public async Task Chronyd_AlsoAcceptsTheMandatoryAlgorithm()
+    {
+
+        if (chrony is null)
+        {
+            Assert.Ignore("chronyd is not running");
+            return;
+        }
+
+        var client  = CreateClient(aeadAlgorithms: [ AEADAlgorithms.AES_SIV_CMAC_256 ]);
+        var result  = await client.GetNTSKERecords();
+
+        Assert.That(result.Success, Is.True,
+                    $"NTS-KE against chronyd failed: {result.ErrorMessage}");
+
+        Assert.Multiple(() => {
+
+            Assert.That(result.Response!.AEADAlgorithm,
+                        Is.EqualTo(AEADAlgorithms.AES_SIV_CMAC_256),
+                        "only one algorithm was offered, so nothing else may be agreed");
+
+            Assert.That(result.Response.C2SKey.Length, Is.EqualTo(32));
+
+        });
+
+        var query = await client.QueryTime(NTSKEResponse: result.Response!);
+
+        Assert.That(query.Success, Is.True, query.ErrorMessage);
 
     }
 

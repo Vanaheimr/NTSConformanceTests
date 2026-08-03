@@ -4,6 +4,8 @@ using NTSConformance.Core;
 using NTSConformance.Core.Fixtures;
 using NTSConformance.Core.RawNtsKe;
 
+using org.GraphDefined.Vanaheimr.Norn.NTS;
+
 namespace NTSConformance.NTSKE.Tests;
 
 /// <summary>
@@ -27,9 +29,12 @@ public class NtsKeServerNegotiationTests
     private NornServerFixture? fixture;
     private DebugXSink?        sink;
 
-    /// <summary>AEAD ids from the IANA registry: 15 is the one NTS mandates, 30 is not implemented here.</summary>
+    /// <summary>AEAD ids from the IANA registry: 15 is the one NTS mandates, 30 the one chrony prefers.</summary>
     private const UInt16 AeadAesSivCmac256 = 15;
     private const UInt16 AeadAes128GcmSiv  = 30;
+
+    /// <summary>AEAD_AES_128_GCM: registered with IANA, and deliberately not implemented here.</summary>
+    private const UInt16 AeadAes128Gcm     = 1;
 
 
     [OneTimeSetUp]
@@ -38,8 +43,12 @@ public class NtsKeServerNegotiationTests
         // The server's own log is often the only place the reason appears — a client that gets
         // no reply cannot tell why, which is the very defect these tests are about.
         sink    = new DebugXSink();
+        // Agreeing to both implemented algorithms, so the selection rules of § 4.1.5 have
+        // something to select between. The server's default offer is narrower — see
+        // NTSAEAD.Supported — and a one-element list makes every selection test vacuous.
         fixture = await NornServerFixture.StartAsync(
-                      certificate: TestCertificate.Generate("nts-ke.test", [ "nts-ke.test" ]));
+                      certificate:     TestCertificate.Generate("nts-ke.test", [ "nts-ke.test" ]),
+                      aeadAlgorithms:  NTSAEAD.Implemented);
     }
 
 
@@ -112,16 +121,25 @@ public class NtsKeServerNegotiationTests
 
 
     /// <summary>
-    /// RFC 8915 §4.1.5: the algorithm the server selects must be one the client offered.
-    /// Offering both a supported and an unsupported algorithm must yield the supported one.
+    /// RFC 8915 §4.1.5: the algorithm the server selects must be one the client offered, and
+    /// the client's order is what decides between several the server could serve.
     /// </summary>
-    [Test]
-    public async Task AeadSelection_ComesFromTheClientsList()
+    /// <remarks>
+    /// Both halves are asserted by offering the same two algorithms in each order and getting a
+    /// different answer each time. A single fixed outcome would pass just as well against a
+    /// server that ignored the list and always answered with its own favourite — which is what
+    /// this test turned out to be doing once a second algorithm was implemented.
+    /// </remarks>
+    [TestCase(AeadAes128GcmSiv,  AeadAesSivCmac256, AeadAes128GcmSiv,
+              TestName = "AeadSelection_FollowsTheClientsOrder(GCM-SIV offered first)")]
+    [TestCase(AeadAesSivCmac256, AeadAes128GcmSiv,  AeadAesSivCmac256,
+              TestName = "AeadSelection_FollowsTheClientsOrder(AES-SIV offered first)")]
+    public async Task AeadSelection_FollowsTheClientsOrder(UInt16 First, UInt16 Second, UInt16 Expected)
     {
 
         var request = RawNtsKeCodec.Encode([
                           RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv4),
-                          RawNtsKeRecord.AeadAlgorithmNegotiation(AeadAes128GcmSiv, AeadAesSivCmac256),
+                          RawNtsKeRecord.AeadAlgorithmNegotiation(First, Second),
                           RawNtsKeRecord.EndOfMessage()
                       ]);
 
@@ -138,8 +156,42 @@ public class NtsKeServerNegotiationTests
         }
 
         Assert.That(RawNtsKeCodec.ReadUInt16Body(aead),
+                    Is.EqualTo(new UInt16[] { Expected }).AsCollection,
+                    $"the client offered {First} then {Second}, so the server should have " +
+                    $"answered {Expected}\n{exchange}");
+
+    }
+
+
+    /// <summary>
+    /// An algorithm the server cannot perform is passed over for one it can.
+    /// </summary>
+    /// <remarks>
+    /// AEAD_AES_128_GCM (1) is registered with IANA and not implemented here, so a client
+    /// offering it first must still end up with the algorithm it offered second — rather than
+    /// with an agreement neither side can act on.
+    /// </remarks>
+    [Test]
+    public async Task AeadSelection_SkipsWhatTheServerCannotDo()
+    {
+
+        var request = RawNtsKeCodec.Encode([
+                          RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv4),
+                          RawNtsKeRecord.AeadAlgorithmNegotiation(AeadAes128Gcm, AeadAesSivCmac256),
+                          RawNtsKeRecord.EndOfMessage()
+                      ]);
+
+        var exchange = await Exchange(request);
+
+        Assert.That(exchange.ClosedWithoutResponse, Is.False, exchange.ToString());
+
+        var aead = exchange.FirstRecordOfType(RawNtsKeRecordTypes.AeadAlgorithmNegotiation);
+
+        Assert.That(aead, Is.Not.Null, $"no AEAD record\n{exchange}");
+
+        Assert.That(RawNtsKeCodec.ReadUInt16Body(aead!),
                     Is.EqualTo(new UInt16[] { AeadAesSivCmac256 }).AsCollection,
-                    $"the server should select AES-SIV-CMAC-256, which the client offered\n{exchange}");
+                    $"AEAD_AES_128_GCM is not implemented, so the second offer should win\n{exchange}");
 
     }
 

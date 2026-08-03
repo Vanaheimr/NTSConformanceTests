@@ -400,21 +400,63 @@ public class CookieConfidentialityTests
 
 
     /// <summary>
-    /// An unsupported AEAD algorithm id must be refused rather than silently treated as
-    /// AES-SIV-CMAC-256, which would mean using key material of the wrong length.
+    /// An algorithm this implementation cannot perform must be refused rather than silently
+    /// treated as something else, which would mean reading key material of the wrong length out
+    /// of the cookie.
     /// </summary>
+    /// <remarks>
+    /// The id used here is AEAD_AES_128_GCM (1) — registered with IANA, named in
+    /// <see cref="AEADAlgorithms"/> so that it can be refused precisely, and not implemented.
+    /// This test used to use AES-128-GCM-SIV (30), which has since been implemented; that it
+    /// then failed is the test working, and the fix is a different unsupported id rather than a
+    /// weaker assertion.
+    /// </remarks>
     [Test]
     public void UnsupportedAeadAlgorithm_IsRejected()
     {
 
         var masterKey = NewMasterKey();
-        var cookie    = NTSCookie.Create(masterKey, C2SKey, S2CKey, AEADAlgorithms.AES_128_GCM_SIV);
+        var cookie    = NTSCookie.Create(masterKey, C2SKey, S2CKey, AEADAlgorithms.AES_128_GCM);
 
         Assert.That(NTSCookie.TryParse(cookie.Encrypt(masterKey), masterKey, out _, out var errorResponse),
                     Is.False,
-                    "only AES-SIV-CMAC-256 is implemented, so any other algorithm id must be refused");
+                    "an algorithm that is registered but not implemented must be refused");
 
         Assert.That(errorResponse, Does.Contain("AEAD").IgnoreCase);
+
+    }
+
+
+    /// <summary>
+    /// And an implemented one round-trips with its own key length.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart to the test above, and the reason it cannot simply assert "anything but
+    /// 15 is refused": the cookie body has no fixed layout past the algorithm id — the two keys
+    /// are as long as that algorithm says — so a reader that got the length from anywhere else
+    /// would produce two keys of plausible-looking rubbish rather than an error.
+    /// </remarks>
+    [Test]
+    public void AnImplementedAeadAlgorithm_RoundTripsWithItsOwnKeyLength()
+    {
+
+        var masterKey  = NewMasterKey();
+
+        // Sixteen octets each, which is what AES-128-GCM-SIV uses and half what AES-SIV needs.
+        var c2s        = Enumerable.Range(0,  16).Select(i => (Byte) i).ToArray();
+        var s2c        = Enumerable.Range(64, 16).Select(i => (Byte) i).ToArray();
+
+        var cookie     = NTSCookie.Create(masterKey, c2s, s2c, AEADAlgorithms.AES_128_GCM_SIV);
+
+        Assert.That(NTSCookie.TryParse(cookie.Encrypt(masterKey), masterKey, out var recovered, out var errorResponse),
+                    Is.True,
+                    errorResponse);
+
+        Assert.Multiple(() => {
+            Assert.That(recovered!.AEADAlgorithm, Is.EqualTo(AEADAlgorithms.AES_128_GCM_SIV));
+            Assert.That(recovered.C2SKey,         Is.EqualTo(c2s).AsCollection);
+            Assert.That(recovered.S2CKey,         Is.EqualTo(s2c).AsCollection);
+        });
 
     }
 
