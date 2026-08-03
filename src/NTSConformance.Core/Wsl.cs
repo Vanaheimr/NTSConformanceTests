@@ -5,7 +5,7 @@ namespace NTSConformance.Core;
 
 /// <summary>
 /// Bridge to the local WSL distribution for running GNU/Linux NTP/NTS tools
-/// (chronyd, chronyc, ntpdig, gnutls-cli, …) from tests.
+/// (chronyd, ntp-daemon, gnutls-cli, …) from tests.
 /// </summary>
 public static class Wsl
 {

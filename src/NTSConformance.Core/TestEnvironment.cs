@@ -99,11 +99,11 @@ public static class TestEnvironment
     {
 
         if (!Wsl.IsAvailable)
-            Assert.Ignore("WSL is not available — skipping. Install WSL and: apt-get install chrony ntpsec-ntpdig gnutls-bin");
+            Assert.Ignore("WSL is not available — skipping. Install WSL and: apt-get install chrony ntpd-rs gnutls-bin");
 
         foreach (var tool in tools)
             if (!Wsl.HasTool(tool))
-                Assert.Ignore($"'{tool}' not found inside WSL — skipping. Install it, e.g.: wsl -u root apt-get install -y chrony ntpsec-ntpdig gnutls-bin");
+                Assert.Ignore($"'{tool}' not found inside WSL — skipping. Install it, e.g.: wsl -u root apt-get install -y chrony ntpd-rs gnutls-bin");
 
     }
 
@@ -130,6 +130,30 @@ public static class TestEnvironment
 
         if (!chronyHasNts.Value)
             Assert.Ignore("The WSL chronyd was built without NTS support ('-NTS' in its version banner) — skipping.");
+
+    }
+
+    /// <summary>
+    /// ntpd-rs must be present, and recent enough to speak NTS.
+    ///
+    /// It matters here for a reason chrony cannot cover: ntpd-rs is written in Rust and does its
+    /// TLS with rustls, so it validates Norn's NTS-KE certificate through a stack that shares
+    /// nothing with BouncyCastle, SChannel or GnuTLS. rustls is also the strictest of the four —
+    /// it ignores the certificate's Common Name entirely and requires a matching subject
+    /// alternative name.
+    /// </summary>
+    public static void RequireNtpdRs()
+    {
+
+        RequireWsl("ntp-daemon", "ntp-ctl");
+
+        // Both streams: ntp-daemon writes its version banner to stderr, and checking only
+        // stdout made this skip on a machine where ntpd-rs was installed and working.
+        var version = Wsl.Run("ntp-daemon --version", TimeSpan.FromSeconds(15));
+        var banner  = version.StdOut + version.StdErr;
+
+        if (!banner.Contains("ntp-daemon", StringComparison.Ordinal))
+            Assert.Ignore($"Could not determine the ntpd-rs version — skipping. {banner}");
 
     }
 

@@ -39,10 +39,16 @@ ones.
 Verified state: **268 tests green** in the hermetic gate, nothing red, nothing tagged
 `KnownIssue`.
 
-Interoperability is confirmed in both directions against **chronyd 4.6.1** — Norn's client
-against chronyd's NTS server, and chronyd as a client taking a real measurement from Norn's
-server — plus **GnuTLS** against the NTS-KE endpoint, and **Cloudflare** and **PTB** with
-certificate validation switched on.
+Interoperability is confirmed against three independent implementations. **chronyd 4.6.1** in
+both directions — Norn's client against chronyd's NTS server, and chronyd as a client taking a
+real measurement from Norn's. **ntpd-rs 1.4** as an NTS client against Norn's server, which is
+the only test here where somebody else's code validates Norn's certificate and completes a full
+NTS exchange against it. And **GnuTLS** against the NTS-KE endpoint. Plus **Cloudflare**, **PTB**
+and **Netnod** with certificate validation switched on.
+
+That spread is deliberate rather than thorough-looking: Norn's own client, GnuTLS, SChannel and
+rustls disagree about what to accept, and every high-value defect this suite found was visible to
+exactly one of them.
 
 ## RFC coverage
 
@@ -172,7 +178,7 @@ conformance/
   NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock
   NTSConformance.Cookies.Tests/          RFC 8915 §6 — opacity, forgery, rotation
 interop/
-  NTSInterop.LinuxTools.Tests/           chronyd and gnutls-cli via WSL
+  NTSInterop.LinuxTools.Tests/           chronyd, ntpd-rs and gnutls-cli via WSL
   NTSInterop.PublicServers.Tests/        Cloudflare, PTB, Netnod, time.nl
 ```
 
@@ -218,7 +224,7 @@ dotnet test conformance/NTSConformance.Cookies.Tests/NTSConformance.Cookies.Test
 | Category | Meaning |
 |---|---|
 | `Online` | Needs outbound internet to public NTS servers |
-| `WSL` | Needs WSL with chrony / ntpsec / gnutls installed |
+| `WSL` | Needs WSL with chrony / ntpd-rs / gnutls installed |
 | `Loopback` | Drives a real in-process Norn server over loopback |
 | `Slow` | Runs longer than about five seconds |
 | `KnownIssue` | Pins an RFC requirement Norn violates — currently none |
@@ -241,15 +247,19 @@ All three resolve over HTTPS from the public GitHub mirrors, so no account or ke
 For the WSL interop tests:
 
 ```bash
-wsl -u root apt-get install -y chrony ntpsec-ntpdig gnutls-bin openssl
+wsl -u root apt-get install -y chrony ntpd-rs gnutls-bin openssl
 ```
 
 chrony must be built with NTS support — `chronyd --version` should show `+NTS`. Debian's is.
 
 The chrony tests run **chronyd inside WSL as the NTS server** and connect Norn's client
-outward to it. That direction is deliberate: WSL2's NAT lets Windows reach the VM on both TCP
-and UDP, whereas Windows Firewall silently drops the reverse. The few tests that do need
-inbound access probe for it first and explain the firewall rule required.
+outward to it. The reverse direction — chronyd and ntpd-rs as clients against a Norn server on
+the Windows host — needs inbound TCP and UDP from the WSL subnet, which Windows Firewall may
+block. Every test that needs it probes first and skips with the reason rather than failing, so
+a machine where it is blocked still reports honestly.
+
+ntpd-rs is handed a certificate carrying the Windows host's address as an **IP** subject
+alternative name: rustls ignores the Common Name entirely and matches only against SANs.
 
 ## Conventions
 
