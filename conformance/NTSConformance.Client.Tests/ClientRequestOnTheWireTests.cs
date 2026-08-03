@@ -74,6 +74,89 @@ public class ClientRequestOnTheWireTests
     #endregion
 
 
+    #region The ALPN identifier, which is the only agreement to speak NTS-KE at all
+
+    /// <summary>
+    /// A server that completes the handshake without selecting <c>ntske/1</c> is refused, and
+    /// refused before a single record is sent to it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// RFC 8915 § 3: the ALPN extension is "integral to NTS" and support for it is "REQUIRED for
+    /// interoperability". § 4 describes the exchange as one the server accepts <c>ntske/1</c> in.
+    /// Neither spells out the client's obligation when it does not, and Norn's client used to
+    /// record the negotiated protocol and never look at it — it completed the exchange and
+    /// reported success against a peer that had agreed to nothing.
+    /// </para>
+    /// <para>
+    /// "Before a single record" is the half worth asserting separately. Detecting this after the
+    /// exchange would still return the right verdict, and would have handed NTS-KE records, and
+    /// the shape of this client's offers, to something that never said it was an NTS-KE server.
+    /// </para>
+    /// <para>
+    /// One thing this cannot reach: the check compares against <c>ntske/1</c> by name, and
+    /// weakening it to "any protocol at all" changes nothing observable. Norn's client offers
+    /// exactly one protocol, RFC 7301 lets a server select only from what the client offered, and
+    /// BouncyCastle rejects a selection outside that list before this code runs — so "some other
+    /// protocol was selected" is not a state any peer can put this client into. The comparison
+    /// stays by name because it says what is meant and stays correct if the offer ever grows.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AServerThatDoesNotSelectNtske1_IsRefused()
+    {
+
+        await using var server = ScriptedNtsKeServer.Start(OfferAlpn: false);
+
+        var result = await new NTSClient(
+                               DomainName.Localhost,
+                               NTSKE_Port:                  server.Port,
+                               IPVersionPreference:         IPVersionPreference.IPv4Only,
+                               Timeout:                     TimeSpan.FromSeconds(10),
+                               RemoteCertificateValidator:  (sender, certificate, chain, tlsClient, policyErrors)
+                                                                => TLSValidationResult.Success()
+                           ).GetNTSKERecords();
+
+        // The client's return and the server's bookkeeping are on different threads. Waiting for
+        // the server to account for the connection one way or the other is what makes the two
+        // assertions below mean something: asked too early, "nothing was sent" is true of a
+        // request still in flight.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+
+        while (server.ConnectionsClosedWithoutRequest == 0 &&
+               server.Requests.Count                  == 0 &&
+               DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Multiple(() => {
+
+            Assert.That(result.Success, Is.False,
+                        "the server never agreed to speak NTS-KE");
+
+            Assert.That(result.ErrorCategory, Is.EqualTo(NTSKEErrorCategory.TLSHandshake),
+                        "the disagreement is in the handshake, not in the records — there are none");
+
+            Assert.That(result.ErrorMessage, Does.Contain("ntske/1"),
+                        $"and the message has to name what was missing: {result.ErrorMessage}");
+
+            Assert.That(server.Requests, Is.Empty,
+                        $"nothing may be sent to a peer that has not agreed to read it, and " +
+                        $"{server.Requests.Count} request(s) were");
+
+            Assert.That(server.ConnectionsClosedWithoutRequest, Is.GreaterThan(0),
+                        $"and the client did get that far — it completed the handshake and then " +
+                        $"walked away, rather than never arriving. Server failures: " +
+                        $"{String.Join("; ", server.Failures)}");
+
+        });
+
+    }
+
+    #endregion
+
+
     /// <summary>
     /// The handshake itself: TLS 1.3 with <c>ntske/1</c>, and a request that decodes.
     /// </summary>

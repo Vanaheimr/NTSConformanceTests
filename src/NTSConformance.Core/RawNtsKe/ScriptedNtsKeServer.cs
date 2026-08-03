@@ -110,6 +110,7 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
     private readonly List<String>                                           failures = [];
     private readonly Task                                                   acceptLoop;
     private readonly Boolean                                                offerAlpn;
+    private          Int32                                                  connectionsClosedWithoutRequest;
 
     #endregion
 
@@ -149,6 +150,23 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
         {
             lock (requestLock)
                 return [ .. failures ];
+        }
+    }
+
+    /// <summary>
+    /// Connections whose TLS handshake completed and on which the client then sent nothing.
+    /// </summary>
+    /// <remarks>
+    /// The shape of a client that inspected the handshake and walked away — which is what one
+    /// should do when the server never selected <c>ntske/1</c>. It is deliberately not in
+    /// <see cref="Requests"/>: a test asserting that nothing was sent must be able to fail.
+    /// </remarks>
+    public Int32 ConnectionsClosedWithoutRequest
+    {
+        get
+        {
+            lock (requestLock)
+                return connectionsClosedWithoutRequest;
         }
     }
 
@@ -336,7 +354,22 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
 
                 }
 
-                var bytes    = received.ToArray();
+                var bytes = received.ToArray();
+
+                // A connection that carried no octet at all is not a request, and recording it as
+                // an empty one would be worse than useless: a test asserting that a client sent
+                // nothing would fail against a client that did exactly that. Counted separately,
+                // because "connected and hung up" and "never connected" are different diagnoses.
+                if (bytes.Length == 0)
+                {
+
+                    lock (requestLock)
+                        connectionsClosedWithoutRequest++;
+
+                    return;
+
+                }
+
                 var decoded  = RawNtsKeCodec.TryDecode(bytes, out var records, out var decodeError);
 
                 var request  = new CapturedNtsKeRequest(
