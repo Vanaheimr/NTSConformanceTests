@@ -56,6 +56,11 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// The host name to advertise in the NTPv4 Server Negotiation record. Defaults to
     /// localhost; interop clients outside this machine need a name or address they can reach.
     /// </param>
+    /// <param name="advertisedNTPPort">
+    /// The port to advertise in the NTPv4 Port Negotiation record, when it should differ from
+    /// the port the server actually listens on. Only a divergence between the two makes it
+    /// observable whether a client follows the record or ignores it.
+    /// </param>
     /// <param name="listenIPAddress">
     /// The local address to listen on. Left null the server picks its own default, which is
     /// IPv4 0.0.0.0; <c>IPvXAddress.Any</c> serves both address families.
@@ -70,18 +75,20 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     TimeSpan?        masterKeyRotationGracePeriod  = null,
                                                     TestCertificate? certificate                   = null,
                                                     String?          externalHostName              = null,
+                                                    IPPort?          advertisedNTPPort             = null,
                                                     IIPAddress?      listenIPAddress               = null,
                                                     TimeProvider?    timeProvider                  = null,
                                                     TimeSpan?        clockResolution               = null)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 
-               var host   = externalHostName ?? "localhost";
+               var host   = externalHostName  ?? "localhost";
+               var port   = advertisedNTPPort ?? udpPort;
 
                var server = new NTSServer(
                                 NTSKEPort:                     tcpPort,
                                 NTSPort:                       udpPort,
-                                ExternalURLs:                  [ URL.Parse($"udp://{host}:{udpPort}") ],
+                                ExternalURLs:                  [ URL.Parse($"udp://{host}:{port}") ],
                                 MasterKeysFilePath:            null,
                                 MasterKeyLifetime:             masterKeyLifetime,
                                 MasterKeyRotationGracePeriod:  masterKeyRotationGracePeriod,

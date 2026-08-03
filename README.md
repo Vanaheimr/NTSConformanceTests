@@ -5,9 +5,10 @@ implementation, plus interoperability tests against independent implementations.
 
 Covers **RFC 5905** (NTPv4), **RFC 7822** (extension fields), **RFC 8915** (Network Time
 Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC), **RFC 3686** (AES-CTR),
-**RFC 8446** (TLS 1.3), **RFC 7301** (ALPN), **RFC 5480** (EC key encoding) and **RFC 7384**
-(security requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is
-asserted, what is planned, and what is deliberately out of scope.
+**RFC 8446** (TLS 1.3), **RFC 7301** (ALPN), **RFC 5480** (EC key encoding), **RFC 9109**
+(port randomization), **RFC 9748** (the NTP registries) and **RFC 7384** (security
+requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is asserted,
+what is planned, and what is deliberately out of scope.
 
 ## Why a second implementation
 
@@ -27,7 +28,7 @@ makes the negative tests possible at all.
 
 ## Results
 
-The suite found **17 RFC deviations**, including one critical: NTS cookies were neither
+The suite found **20 RFC deviations**, including one critical: NTS cookies were neither
 encrypted nor authenticated, exposing both session keys on the wire and allowing any forged
 cookie to be accepted. All of them are fixed in `libs/Norn`, each with a test that failed first
 and now guards against regression; the reasoning for each is in the commit that fixed it.
@@ -36,7 +37,7 @@ Two were reachable only from outside Norn — its own client and GnuTLS were len
 the places it was wrong — which is why the interop projects exist and not only the conformance
 ones.
 
-Verified state: **268 tests green** in the hermetic gate, nothing red, nothing tagged
+Verified state: **293 tests green** in the hermetic gate, nothing red, nothing tagged
 `KnownIssue`.
 
 Interoperability is confirmed against three independent implementations, in every direction:
@@ -79,9 +80,11 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 5905 §11.3 | The root-distance inputs a client needs: dispersion non-zero, delay and dispersion surviving the short-format round trip | ✅ |
 | 5905 §7.3 | Leap indicator 3 — an unsynchronized server must be refused as a time source | ✅ |
 | 7822 | Extension field framing: length below 4, length not a multiple of 4, truncation, 1–3 trailing octets, unknown types, duplicate Unique Identifier, the 28- and 16-octet minimums | ✅ |
-| 5905 §7.3 | IPv6 reference identifier — the first four octets of the address digest | ⬜ |
+| 5905 §7.3 | IPv6 reference identifier: the leading four octets of the digest over the sixteen binary address octets — over the address rather than its spelling, and over all of it | ✅ |
+| 9748 | The NTP registries as they now stand: every registered Kiss-o'-Death code and clock source is understood, codes are matched exactly, `X…` is never given a registered meaning, and unspecified extension fields stay inside 0xF000–0xFFFF | ✅ |
 | 5905 §9.1 | Peer, broadcast and multicast modes | — |
 | 5905 §10–§12 | Clock filter, selection, clustering and discipline | — |
+| 9769 | Interleaved client/server, symmetric and broadcast modes | — |
 | 5905 App. A | Symmetric-key MAC: the Key Identifier and Message Digest fields parse, but are never emitted | — |
 
 ### Network Time Security — RFC 8915
@@ -95,8 +98,8 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | §4.1.3 | Error records: unknown critical record → 0, malformed record stream → 1, sent rather than dropped in silence | ✅ |
 | §4.1.5 | AEAD negotiation: the selection comes from the client's list, the IDs match the IANA registry, and an offer of only an unsupported algorithm is refused | ✅ |
 | §4.1.6 | New Cookie for NTPv4: none issued when NTPv4 was not the negotiated protocol | ✅ |
-| §4.1.4 | Warning records | ⬜ |
-| §4.1.7, §4.1.8 | NTPv4 server and port negotiation: records emitted and parsed here, the client-side redirect covered by Norn's own tests | 🟡 |
+| §4.1.4 | Warning records: no warning code has ever been registered, so every one is unrecognized and must be treated as an error | ✅ |
+| §4.1.7, §4.1.8 | NTPv4 server and port negotiation: the time query is observed arriving at the advertised host and port, and an advertised server that cannot be reached is not silently replaced by the key-exchange host | ✅ |
 | §5.1 | TLS key extraction: the exporter label and its five-octet context, byte-exact and distinct per direction | ✅ |
 | §5.3, §5.4, §5.5 | Unique Identifier echoed; Cookie and Cookie Placeholder fields, a placeholder valid only at cookie length | ✅ |
 | §5.6 | Authenticator and Encrypted extension field: associated data is the header followed by every preceding field, as one contiguous string | ✅ |
@@ -126,25 +129,33 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 8446 | TLS 1.3 required — a 1.2-only client is refused | ✅ |
 | 7301 | ALPN `ntske/1` selected and echoed, verified against two independent TLS stacks | ✅ |
 | 5480 §2.1.1 | EC public keys encoded as a named curve rather than explicit parameters; a certificate carrying explicit parameters is unusable by SChannel/CNG | ✅ |
+| 9109 | Source port randomization: queries leave from an ephemeral port, never 123, and not the same one twice | ✅ |
 | 6125 | Certificate identity: the configured certificate is presented, and accepted by a third-party client | 🟡 |
 
 ### Planned
 
 Not covered yet, in rough order of value:
 
-- **RFC 8915 §4.1.4 Warning records** — implemented, untested.
-- **RFC 5905 §7.3 IPv6 reference identifier** — implemented, untested.
-- **RFC 8915 §4.1.7 and §4.1.8 from this side** — a scripted NTS-KE server that redirects the
-  client to a different host and port, to prove the client actually follows it.
-- **AES-SIV-CMAC-384 and -512** — needs implementing in Norn first, and the reference codec
-  would have to grow the same variants to stay independent of it.
-- **RFC 9109 port randomization** — the client uses whatever ephemeral port the OS assigns,
-  which satisfies this in practice but is neither explicit nor asserted.
-- **RFC 8633 operational behaviour** — poll-interval discipline, backing off after a
-  Kiss-o'-Death, and the rate limiting a public-facing server needs.
+- **RFC 9769 interleaved modes** — published May 2025, and the only new wire functionality to
+  reach RFC status since this suite was written. chrony has had it for years behind
+  `xleave`, which makes the interop test straightforward once Norn's server can answer that
+  way. Norn does not implement it.
+- **RFC 8633 operational behaviour** — poll-interval discipline, acting on a Kiss-o'-Death
+  rather than merely reading it, and the rate limiting a public-facing server needs. Norn
+  recognizes every kiss code and honours none of them; there is no rate limiter at all.
+- **AEAD_AES_128_GCM_SIV (algorithm 30)** — worth more than AES-SIV-CMAC-384 and -512, which
+  nothing in the field negotiates. chrony offers 30 and its cookies are smaller for it. All
+  three need implementing in Norn first, and the reference codec would have to grow the same
+  variants to stay independent of it.
+- **RFC 8915 §4.1.8's default of 123** — a key exchange that sends a Server Negotiation record
+  and no Port Negotiation record obliges the client to assume 123. Norn's server always emits
+  both, so proving this needs a scripted NTS-KE server that omits one.
 - **RFC 5905 §10–§12** — the clock filter and selection algorithms, once Norn does more than
   measure: its monitoring engine computes offsets but steers nothing.
-- **Interleaved client/server mode** — chrony and ntpd both support it; Norn does not.
+- **NTS pools** — `draft-venhoek-nts-pool`, which the working group leaned towards adopting as
+  Experimental in February 2026, and which ntpd-rs already ships behind a flag. It builds on
+  §4.1.7 and §4.1.8, both of which now work here, so a pool key exchange in front of Norn
+  would be a realistic test rather than a speculative one.
 
 ### Out of scope
 
@@ -158,7 +169,10 @@ Deliberately not covered, and why:
   number on the wire is a compatibility question, not a conformance one.
 - **RFC 5907 NTP MIB** — there is no SNMP management plane to test.
 - **IEEE 1588 PTP and NTS4PTP** — a different protocol family over a different transport.
-- **NTPv5** — still a draft; there is nothing to conform to yet.
+- **NTPv5** — `draft-ietf-ntp-ntpv5-09` (July 2026), proposed as Experimental and still moving;
+  ntpd-rs tracks it draft by draft. There is nothing stable to conform to yet.
+- **Roughtime** — `draft-ietf-ntp-roughtime`, also still a draft. A different protocol with a
+  different goal: rough time from servers you need not trust individually.
 - **Leap second handling** — Norn reports the leap indicator it is given. Getting a leap right
   end to end needs a leap-second file and a clock that can be steered, which belongs to
   whatever does the steering rather than to the protocol implementation.
@@ -173,13 +187,14 @@ src/NTSConformance.Core/                 the harness
   RawNtsKe/                              independent RFC 8915 §4 record codec
   Fixtures/                              Norn and chronyd server fixtures, certificates, DebugX capture
   TestClock.cs                           a TimeProvider the test controls: frozen, or displaced
+  UdpRelayProbe.cs                       a loopback socket that records who sent what, and can pass it on
   TestEnvironment.cs                     capability probing, Assert.Ignore gating
   Wsl.cs                                 WSL bridge, host↔VM addressing
 conformance/
-  NTSConformance.WireFormat.Tests/       RFC 5905 header, RFC 7822 framing, timestamps
+  NTSConformance.WireFormat.Tests/       RFC 5905 header, RFC 7822 framing, timestamps, the registries
   NTSConformance.Crypto.Tests/           RFC 5297 / 4493 vectors, differential vs reference
-  NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, server negotiation, certificates
-  NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, displaced clocks
+  NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, server negotiation, warnings, certificates
+  NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, where its query goes
   NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock
   NTSConformance.Cookies.Tests/          RFC 8915 §6 — opacity, forgery, rotation
 interop/
