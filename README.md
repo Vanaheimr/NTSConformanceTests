@@ -42,9 +42,11 @@ completed a key exchange with a peer that never selected it and reported success
 handed out cookies to a client that never offered it. Both are counted separately above because
 §3 and §4 describe the ALPN agreement without saying what either end does when the other does not
 play along — a weakness rather than a plain violation, and refused on both sides now, as chrony
-has always done.
+has always done. The same server then found a third of the same kind: the client accepted an AEAD
+algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
+quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state: **512 tests green** in the hermetic gate, and no open defect — the one
+Verified state: **531 tests green** in the hermetic gate, and no open defect — the one
 `KnownIssue` this suite has ever carried, AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
@@ -139,6 +141,8 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | §4.1.2 | Next protocol negotiation: the response must be a subset of the request, and a request listing none is refused | ✅ |
 | §4.1.3 | Error records: unknown critical record → 0, malformed record stream → 1, sent rather than dropped in silence | ✅ |
 | §4.1.5 | AEAD negotiation: the selection comes from the client's list, the IDs match the IANA registry, and an offer of only an unsupported algorithm is refused | ✅ |
+| §4.1.5 | And from the client's side: a response naming two algorithms, or one the client never offered, is refused — the server may ignore the client's preference order but not its list | ✅ |
+| §4, §4.1 | Every way a reply can be wrong, driven from a peer rather than asserted against the validator: Error and Warning records, unknown records critical and not, each required record missing, an empty cookie, a body length running off the end of the message, a reply with no End of Message, and a server that hangs up saying nothing | ✅ |
 | §4.1.6 | New Cookie for NTPv4: none issued when NTPv4 was not the negotiated protocol | ✅ |
 | §4.1.4 | Warning records: no warning code has ever been registered, so every one is unrecognized and must be treated as an error | ✅ |
 | §4.1.7, §4.1.8 | NTPv4 server and port negotiation: the time query is observed arriving at the advertised host and port, and an advertised server that cannot be reached is not silently replaced by the key-exchange host | ✅ |
@@ -205,15 +209,9 @@ Not covered yet, in rough order of value:
 - **RFC 8633's remaining operational advice** — § 5.1's information leakage (an access list on
   who may query at all), and § 5.2's panic threshold, which needs a Norn that steers a clock
   rather than only measuring one. § 5.4, the rate limiting and the kiss codes, is done.
-- **Client-side error and warning paths** — the scripted server can now reply with anything at
-  all, including Error records, unknown critical records and truncated messages, which is how the
-  client's refusals get tested against a peer rather than against a unit.
 - **AEAD_AES_256_GCM_SIV (algorithm 31)** — implemented and vector-correct, and never run against
   an implementation other than this one, so it stays out of `NTSAEAD.Supported`. Nothing reachable
   from here offers it.
-- **RFC 8915 §4.1.8's default of 123** — a key exchange that sends a Server Negotiation record
-  and no Port Negotiation record obliges the client to assume 123. Norn's server always emits
-  both, so proving this needs a scripted NTS-KE server that omits one.
 - **RFC 5905 §10–§12** — the clock filter and selection algorithms, once Norn does more than
   measure: its monitoring engine computes offsets but steers nothing.
 - **NTS pools** — `draft-venhoek-nts-pool`, which the working group leaned towards adopting as
