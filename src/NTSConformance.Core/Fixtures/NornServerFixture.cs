@@ -72,7 +72,7 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// The clock granularity to report, overriding what the server measures.
     /// </param>
     /// <param name="interleavedMode">
-    /// Whether the server answers RFC 9769 interleaved requests. On by default, as in the
+    /// Who the server answers in the RFC 9769 interleaved mode. Everyone by default, as in the
     /// server itself; switching it off is how a test shows an assertion is detecting the mode
     /// rather than something inherent in the exchange.
     /// </param>
@@ -84,7 +84,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     IIPAddress?      listenIPAddress               = null,
                                                     TimeProvider?    timeProvider                  = null,
                                                     TimeSpan?        clockResolution               = null,
-                                                    Boolean          interleavedMode               = true)
+                                                    InterleavedModePolicy? interleavedMode         = null)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 

@@ -37,14 +37,14 @@ Two were reachable only from outside Norn — its own client and GnuTLS were len
 the places it was wrong — which is why the interop projects exist and not only the conformance
 ones.
 
-Verified state: **316 tests green** in the hermetic gate, nothing red, nothing tagged
+Verified state: **323 tests green** in the hermetic gate, nothing red, nothing tagged
 `KnownIssue`.
 
 Interoperability is confirmed against three independent implementations, in every direction:
 
 | | Norn as client | Norn as NTS server | Norn as plain NTP server |
 |---|:--:|:--:|:--:|
-| **chronyd 4.6.1** | yes | yes | yes, incl. RFC 9769 `xleave` |
+| **chronyd 4.6.1** | yes | yes, incl. `xleave` + NTS together | yes, incl. RFC 9769 `xleave` |
 | **ntpd-rs 1.4** | yes | yes | yes |
 | **gnutls-cli** | — | NTS-KE and ALPN | — |
 
@@ -85,6 +85,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 5905 §9.1 | Peer, broadcast and multicast modes | — |
 | 5905 §10–§12 | Clock filter, selection, clustering and discipline | — |
 | 9769 §2 | Interleaved client/server mode, both sides: mode selection by origin timestamp, the transmit timestamp taken after the previous response left, unique receive timestamps, one interleaved answer per receive timestamp, and a client association that survives loss and then gives up | ✅ |
+| 9769 §2 | The bounds on the server's state: a fixed-length queue per address, a capped client table evicting least-recently-used in constant time, and the mode optionally reserved for authenticated clients | ✅ |
 | 9769 §3, §4 | Interleaved symmetric and broadcast modes | — |
 | 5905 App. A | Symmetric-key MAC: the Key Identifier and Message Digest fields parse, but are never emitted | — |
 

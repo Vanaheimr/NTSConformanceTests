@@ -4,6 +4,8 @@ using NTSConformance.Core;
 using NTSConformance.Core.Fixtures;
 using NTSConformance.Core.RawNtp;
 
+using org.GraphDefined.Vanaheimr.Norn.NTS;
+
 namespace NTSConformance.Server.Tests;
 
 /// <summary>
@@ -489,7 +491,7 @@ public class InterleavedModeTests
     public async Task WithTheModeDisabled_EveryResponseIsBasic()
     {
 
-        await using var plain = await NornServerFixture.StartAsync(interleavedMode: false);
+        await using var plain = await NornServerFixture.StartAsync(interleavedMode: InterleavedModePolicy.Disabled);
 
         var first     = RawNtpExchange.Exchange(Request(0, 0, ClientTimestamp()),
                                                 "127.0.0.1", plain.NTPPort,
@@ -513,6 +515,54 @@ public class InterleavedModeTests
             Assert.That(second.TransmitTimestamp,
                         Is.GreaterThan(second.ReceiveTimestamp),
                         "and the transmit timestamp is this response's own");
+
+        });
+
+    }
+
+    /// <summary>
+    /// RFC 9769 § 2: "The server MAY restrict the interleaved mode to specific IP addresses
+    /// and/or authenticated clients."
+    ///
+    /// The reason to want that is resources rather than protocol correctness. Interleaved mode
+    /// obliges a server to remember something per client address, and on a UDP service the
+    /// source address is whatever the sender wrote there — so every packet of a spoofed flood
+    /// arrives as a new client. Under <c>AuthenticatedOnly</c> nothing is remembered about a
+    /// request without a verified authenticator, so such a flood cannot occupy the table at all.
+    ///
+    /// These requests are plain NTP, so under this policy they must be answered in the basic
+    /// mode however well formed their interleaved bid is.
+    /// </summary>
+    [Test]
+    public async Task UnderAuthenticatedOnly_APlainRequestIsNotAnsweredInterleaved()
+    {
+
+        await using var restricted = await NornServerFixture.StartAsync(
+                                               interleavedMode: InterleavedModePolicy.AuthenticatedOnly);
+
+        var first     = RawNtpExchange.Exchange(Request(0, 0, ClientTimestamp()),
+                                                "127.0.0.1", restricted.NTPPort,
+                                                timeout: TimeSpan.FromSeconds(10));
+
+        var transmit  = ClientTimestamp();
+
+        var second    = RawNtpExchange.Exchange(Request(origin:    first.ReceiveTimestamp,
+                                                        receive:   ClientTimestamp(),
+                                                        transmit:  transmit),
+                                                "127.0.0.1", restricted.NTPPort,
+                                                timeout: TimeSpan.FromSeconds(10));
+
+        Assert.Multiple(() => {
+
+            Assert.That(second.OriginTimestamp,
+                        Is.EqualTo(transmit),
+                        "a plain NTP client must not be answered in the interleaved mode when " +
+                        "the mode is reserved for authenticated ones");
+
+            Assert.That(restricted.Server.InterleavedTimestamps?.TrackedClients,
+                        Is.Zero,
+                        "and nothing may be remembered about it, or the restriction would save " +
+                        "no resources at all — which is the only reason to impose it");
 
         });
 

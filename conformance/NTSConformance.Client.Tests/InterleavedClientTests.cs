@@ -401,7 +401,7 @@ public class InterleavedClientTests
     public async Task AgainstAServerWithoutTheMode_TheClientStillMeasures()
     {
 
-        await using var server = await NornServerFixture.StartAsync(interleavedMode: false);
+        await using var server = await NornServerFixture.StartAsync(interleavedMode: InterleavedModePolicy.Disabled);
 
         var client = server.CreateClient(TimeSpan.FromSeconds(10), interleavedMode: true);
 
