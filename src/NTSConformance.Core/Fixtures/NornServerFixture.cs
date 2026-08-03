@@ -161,10 +161,16 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// its own order — which is how it behaves in the field. Naming one is how a test reaches an
     /// algorithm the client would not otherwise choose.
     /// </param>
+    /// <param name="compliantExporterContext">
+    /// Whether the client claims RFC 8915 § 5.1's exporter context for AES-128-GCM-SIV. False
+    /// makes it speak chrony's older dialect on purpose, which is the only way to reach that
+    /// derivation deliberately.
+    /// </param>
     public NTSClient CreateClient(TimeSpan?      timeout          = null,
                                   TimeProvider?  timeProvider     = null,
                                   Boolean        interleavedMode  = false,
-                                  IEnumerable<AEADAlgorithms>? aeadAlgorithms = null)
+                                  IEnumerable<AEADAlgorithms>? aeadAlgorithms = null,
+                                  Boolean        compliantExporterContext = true)
 
         => new (DomainName.Localhost,
                 NTSKE_Port:                  NTSKEPort,
@@ -175,6 +181,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                  => TLSValidationResult.Success(),
                 InterleavedMode:             interleavedMode,
                 OfferedAEADAlgorithms:       aeadAlgorithms,
+                CompliantAES128GCMSIVExporterContext: compliantExporterContext,
                 TimeProvider:                timeProvider);
 
 

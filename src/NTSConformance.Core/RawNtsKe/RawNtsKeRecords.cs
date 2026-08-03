@@ -13,19 +13,26 @@ public static class RawNtsKeRecordTypes
     public const UInt16 Ntpv4ServerNegotiation     = 6;
     public const UInt16 Ntpv4PortNegotiation       = 7;
 
+    /// <summary>
+    /// Compliant AES-128-GCM-SIV Exporter Context. Not from RFC 8915 — IANA record type 1024,
+    /// registered by the chrony project in the range that requires a specification.
+    /// </summary>
+    public const UInt16 CompliantAes128GcmSivExporterContext = 1024;
+
 
     public static String Describe(UInt16 recordType)
 
         => recordType switch {
-               EndOfMessage              => "End of Message",
-               NextProtocolNegotiation   => "NTS Next Protocol Negotiation",
-               Error                     => "Error",
-               Warning                   => "Warning",
-               AeadAlgorithmNegotiation  => "AEAD Algorithm Negotiation",
-               NewCookieForNtpv4         => "New Cookie for NTPv4",
-               Ntpv4ServerNegotiation    => "NTPv4 Server Negotiation",
-               Ntpv4PortNegotiation      => "NTPv4 Port Negotiation",
-               _                         => $"unknown ({recordType})"
+               EndOfMessage                          => "End of Message",
+               NextProtocolNegotiation               => "NTS Next Protocol Negotiation",
+               Error                                 => "Error",
+               Warning                               => "Warning",
+               AeadAlgorithmNegotiation              => "AEAD Algorithm Negotiation",
+               NewCookieForNtpv4                     => "New Cookie for NTPv4",
+               Ntpv4ServerNegotiation                => "NTPv4 Server Negotiation",
+               Ntpv4PortNegotiation                  => "NTPv4 Port Negotiation",
+               CompliantAes128GcmSivExporterContext  => "Compliant AES-128-GCM-SIV Exporter Context",
+               _                                     => $"unknown ({recordType})"
            };
 
 }
@@ -126,6 +133,14 @@ public sealed record RawNtsKeRecord(Boolean IsCritical, UInt16 RecordType, Byte[
 
     public static RawNtsKeRecord NewCookieForNtpv4(Byte[] cookie)
         => new (false, RawNtsKeRecordTypes.NewCookieForNtpv4, cookie);
+
+    /// <summary>
+    /// IANA record type 1024: this peer derives AES-128-GCM-SIV's keys with the algorithm id
+    /// RFC 8915 § 5.1 specifies, rather than the 15 that chrony writes there. Empty body, and
+    /// never critical — a peer that does not know it has to be able to ignore it.
+    /// </summary>
+    public static RawNtsKeRecord CompliantAes128GcmSivExporterContext(Boolean isCritical = false)
+        => new (isCritical, RawNtsKeRecordTypes.CompliantAes128GcmSivExporterContext, []);
 
 
     private static Byte[] UInt16Body(params UInt16[] values)

@@ -75,8 +75,27 @@ public class PublicNtsServerTests
 
         Assert.Multiple(() => {
 
-            Assert.That(response.C2SKey.Length, Is.EqualTo(32), "a 32-octet C2S key for AES-SIV-CMAC-256");
-            Assert.That(response.S2CKey.Length, Is.EqualTo(32), "a 32-octet S2C key for AES-SIV-CMAC-256");
+            // Against the negotiated algorithm rather than a constant. This used to assert 32
+            // octets outright, which was true only as long as this client offered nothing but
+            // AES-SIV-CMAC-256 — it now prefers AES-128-GCM-SIV, and Cloudflare and time.nl take
+            // it, so two of these servers hand back sixteen.
+            Assert.That(response.C2SKey.Length,
+                        Is.EqualTo(NTSAEAD.KeyLength(response.AEADAlgorithm)),
+                        $"{hostname} agreed on {response.AEADAlgorithm.AsText()}, whose key is " +
+                        $"{NTSAEAD.KeyLength(response.AEADAlgorithm)} octets");
+
+            Assert.That(response.S2CKey.Length,
+                        Is.EqualTo(NTSAEAD.KeyLength(response.AEADAlgorithm)));
+
+            // Not required by anything, and worth recording: which of the two AES-128-GCM-SIV
+            // exporter contexts a public server speaks. Echoing IANA record 1024 means RFC 8915
+            // § 5.1's; silence means chrony's, with algorithm id 15 in the context. Norn follows
+            // whichever it is told, so this assertion cannot fail — it is here to print the
+            // answer in the run log, where a future change of heart by an operator would show up.
+            if (response.AEADAlgorithm == AEADAlgorithms.AES_128_GCM_SIV)
+                TestContext.Out.WriteLine(
+                    $"{hostname}: AES-128-GCM-SIV on the " +
+                    $"{(response.CompliantAES128GCMSIVExporterContext ? "§ 5.1" : "chrony")} exporter context");
 
             Assert.That(response.C2SKey, Is.Not.EqualTo(response.S2CKey).AsCollection,
                         "RFC 8915 §5.1 derives the two directions with different exporter contexts");

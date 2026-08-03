@@ -29,6 +29,7 @@ public class ChronyNtsClientTests
     private NornServerFixture?  fixture;
     private String?             hostAddress;
     private String?             configurationPathInWsl;
+    private String?             gcmSivConfigurationPathInWsl;
 
 
     [OneTimeSetUp]
@@ -63,18 +64,35 @@ public class ChronyNtsClientTests
         // certset 1 rather than the default 0: set 0 is the system's trusted CAs, so a dedicated
         // set means Norn's certificate is the only one that can satisfy this connection. If the
         // certificate were wrong, chronyd could not fall back to a public CA and quietly pass.
-        var configuration   = String.Join(
-                                  Environment.NewLine,
-                                  $"server {hostAddress} port {fixture.NTPPort} nts ntsport {fixture.NTSKEPort} certset 1 iburst",
-                                  $"ntstrustedcerts 1 {certificatePath}",
-                                  $"ntsdumpdir {WorkingDirectory}",
-                                  "driftfile " + WorkingDirectory + "/drift",
-                                  ""
-                              );
+        String WriteConfiguration(String fileName, String? aeadAlgorithms)
+        {
 
-        var configurationPath = Path.Combine(directory, "chrony-nts.conf");
-        File.WriteAllText(configurationPath, configuration);
-        configurationPathInWsl = Wsl.ToWslPath(configurationPath);
+            // A dump directory of its own per configuration. chronyd caches cookies there, and a
+            // shared one would let a later run reuse an earlier run's session — which is exactly
+            // the kind of accident that makes a negotiation test pass without negotiating.
+            var workingDirectory = aeadAlgorithms is null
+                                       ? WorkingDirectory
+                                       : $"{WorkingDirectory}-{aeadAlgorithms}";
+
+            var lines = new List<String> {
+                            $"server {hostAddress} port {fixture.NTPPort} nts ntsport {fixture.NTSKEPort} certset 1 iburst",
+                            $"ntstrustedcerts 1 {certificatePath}",
+                            $"ntsdumpdir {workingDirectory}",
+                            $"driftfile {workingDirectory}/drift"
+                        };
+
+            if (aeadAlgorithms is not null)
+                lines.Add($"ntsaeads {aeadAlgorithms}");
+
+            var path = Path.Combine(directory, fileName);
+            File.WriteAllText(path, String.Join(Environment.NewLine, lines) + Environment.NewLine);
+
+            return Wsl.ToWslPath(path);
+
+        }
+
+        configurationPathInWsl        = WriteConfiguration("chrony-nts.conf",        null);
+        gcmSivConfigurationPathInWsl  = WriteConfiguration("chrony-nts-gcmsiv.conf", "30");
 
     }
 
@@ -86,7 +104,7 @@ public class ChronyNtsClientTests
         if (fixture is not null)
             await fixture.DisposeAsync();
 
-        Wsl.Run($"rm -rf {WorkingDirectory} || true", TimeSpan.FromSeconds(20), asRoot: true);
+        Wsl.Run($"rm -rf {WorkingDirectory} {WorkingDirectory}-30 || true", TimeSpan.FromSeconds(20), asRoot: true);
 
     }
 
@@ -95,10 +113,10 @@ public class ChronyNtsClientTests
     /// Run chronyd in query-only mode against Norn and return what it logged. <c>-Q</c> measures
     /// and reports without touching the system clock.
     /// </summary>
-    private Wsl.Result QueryWithChronyd()
+    private Wsl.Result QueryWithChronyd(String? configuration = null)
 
-        => Wsl.Run($"mkdir -p {WorkingDirectory} && " +
-                   $"/usr/sbin/chronyd -Q -t 15 -f {configurationPathInWsl} 2>&1 || true",
+        => Wsl.Run($"mkdir -p {WorkingDirectory} {WorkingDirectory}-30 && " +
+                   $"/usr/sbin/chronyd -Q -t 15 -f {configuration ?? configurationPathInWsl} 2>&1 || true",
                    TimeSpan.FromSeconds(60),
                    asRoot: true);
 
@@ -143,6 +161,60 @@ public class ChronyNtsClientTests
             Assert.That(result.StdOut,
                         Does.Contain("System clock wrong by"),
                         $"chronyd took the NTS-protected reply and did not accept it.\n" +
+                        $"server metrics: {metrics}\n{result}");
+
+        });
+
+    }
+
+
+    /// <summary>
+    /// The same exchange pinned to AES-128-GCM-SIV, which is the direction the exporter-context
+    /// defect broke that Norn's own client cannot check.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ntsaeads 30</c> leaves chronyd nothing else to offer, so a measurement here means
+    /// Norn's <em>server</em> derived algorithm 30's keys the way chronyd expects — echoing IANA
+    /// record 1024 and using RFC 8915 § 5.1's exporter context because chronyd asked for it. Get
+    /// that wrong and the key exchange still completes, the cookies are still well-formed, and
+    /// chronyd silently discards every reply.
+    /// </para>
+    /// <para>
+    /// The test above does not cover this even now that both default to algorithm 30: it asserts
+    /// that a measurement happened, not which primitive carried it, and a future default would
+    /// move it without anything going red.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void Chronyd_CompletesNtsAgainstNorn_OnGcmSiv()
+    {
+
+        if (fixture is null)
+        {
+            Assert.Ignore("the server fixture did not start");
+            return;
+        }
+
+        var before  = fixture.Server.Metrics.NTPRequestsReceived;
+        var result  = QueryWithChronyd(gcmSivConfigurationPathInWsl);
+        var metrics = fixture.Server.Metrics;
+
+        if (metrics.NTSKEConnectionsAccepted == 0)
+            Assert.Ignore($"chronyd never reached the NTS-KE port, so nothing can be concluded " +
+                          $"about what Norn sent.\n{result}");
+
+        Assert.Multiple(() => {
+
+            Assert.That(metrics.NTPRequestsReceived,
+                        Is.GreaterThan(before),
+                        $"chronyd would not query the time after a key exchange pinned to " +
+                        $"AES-128-GCM-SIV.\nserver metrics: {metrics}\n{result}");
+
+            Assert.That(result.StdOut,
+                        Does.Contain("System clock wrong by"),
+                        $"chronyd took Norn's AES-128-GCM-SIV reply and could not authenticate it, " +
+                        $"which is what a mismatched § 5.1 exporter context looks like.\n" +
                         $"server metrics: {metrics}\n{result}");
 
         });

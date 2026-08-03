@@ -37,9 +37,9 @@ public class AeadNegotiationEndToEndTests
 
     [OneTimeSetUp]
     public async Task StartServer()
-        // Both algorithms, because AES-128-GCM-SIV is implemented but not in the server's
-        // default offer — it does not yet interoperate with chronyd, see NTSAEAD.Supported.
-        // Everything below is about the Norn-to-Norn path, which does work.
+        // Every implemented algorithm rather than the default offer, so that AES-256-GCM-SIV is
+        // reachable too — it is implemented but not advertised, having never been run against an
+        // implementation other than this one. See NTSAEAD.Supported.
         => fixture = await NornServerFixture.StartAsync(
                                certificate:     TestCertificate.Generate("nts-ke.test", [ "nts-ke.test" ]),
                                aeadAlgorithms:  NTSAEAD.Implemented);
@@ -57,11 +57,12 @@ public class AeadNegotiationEndToEndTests
     /// A Norn client and a Norn server run a complete session on AES-128-GCM-SIV.
     /// </summary>
     /// <remarks>
-    /// Both sides have to be asked for it: the algorithm is implemented and vector-correct but
-    /// not in either default offer, because it does not interoperate with chronyd. What this
-    /// test establishes is that the failure is not in the sealing as Norn performs it — the
-    /// keys, the twelve-octet nonce, the cookie and the authenticator all line up when both ends
-    /// are Norn.
+    /// Pinned to the one algorithm rather than left to the default, so the test keeps testing
+    /// what it says even if the preference order changes. What it establishes is that the keys,
+    /// the twelve-octet nonce, the cookie and the authenticator all line up — which is necessary
+    /// and, as the exporter-context defect showed at length, nowhere near sufficient: two ends of
+    /// one codebase agree with each other whatever they both get wrong. The interop suite is
+    /// where that gets settled.
     /// </remarks>
     [Test]
     public async Task PinnedToGcmSiv_ANornSessionWorks()

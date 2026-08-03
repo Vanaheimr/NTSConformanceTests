@@ -63,7 +63,12 @@ public class ChronyNtsServerTests
     /// What to offer chronyd. Left null the client offers everything it can perform, in its own
     /// order, which is how it behaves in the field; naming one pins the negotiation.
     /// </param>
-    private NTSClient CreateClient(IEnumerable<AEADAlgorithms>? aeadAlgorithms = null)
+    /// <param name="compliantExporterContext">
+    /// Whether to claim RFC 8915 § 5.1's exporter context for AES-128-GCM-SIV. False makes the
+    /// client speak chrony's older dialect on purpose.
+    /// </param>
+    private NTSClient CreateClient(IEnumerable<AEADAlgorithms>?  aeadAlgorithms             = null,
+                                   Boolean                       compliantExporterContext   = true)
 
         => new (DomainName.Parse(chrony!.VmAddress),
                 NTSKE_Port:                  chrony.NTSKEPort,
@@ -72,7 +77,8 @@ public class ChronyNtsServerTests
                 Timeout:                     TimeSpan.FromSeconds(15),
                 RemoteCertificateValidator:  (sender, certificate, chain, tlsClient, policyErrors)
                                                  => TLSValidationResult.Success(),
-                OfferedAEADAlgorithms:       aeadAlgorithms);
+                OfferedAEADAlgorithms:       aeadAlgorithms,
+                CompliantAES128GCMSIVExporterContext: compliantExporterContext);
 
 
     /// <summary>
@@ -163,35 +169,28 @@ public class ChronyNtsServerTests
 
 
     /// <summary>
-    /// AES-128-GCM-SIV does not yet interoperate with chronyd, in either direction.
+    /// A full AES-128-GCM-SIV session with chronyd, on RFC 8915 § 5.1's exporter context.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Norn implements the algorithm and matches all twenty-four of RFC 8452's published
-    /// vectors, encrypt and decrypt. A Norn client and a Norn server complete a full session on
-    /// it, with sixteen-octet keys, a twelve-octet nonce and cookies thirty-two octets smaller
-    /// than under AES-SIV-CMAC-256. Against chronyd, the key exchange agrees on the algorithm
-    /// and then every NTP packet fails: chronyd answers Norn's queries with an NTS NAK, and
-    /// Norn's server counts chronyd's requests as invalid. Under AES-SIV-CMAC-256 both
-    /// directions work, before and after the change.
+    /// The reason algorithm 30 was worth implementing. chrony has preferred it for years, and a
+    /// Norn that offered only AES-SIV-CMAC-256 meant every chrony session quietly negotiated down
+    /// to the mandatory algorithm — interoperable, and never once exercising the primitive the
+    /// reference implementation actually reaches for.
     /// </para>
     /// <para>
-    /// What that pattern rules out is most of the surface. The primitive is right, or the
-    /// vectors would fail. The framing is right, or Norn would not read its own. The associated
-    /// data is right, or AES-SIV would fail too — it is the same code. What is left is the one
-    /// thing the two algorithms do differently that no Norn-to-Norn test can see: the RFC 8915
-    /// § 5.1 exporter is asked for sixteen octets instead of thirty-two, and a client and a
-    /// server that both derive the same wrong key agree with each other perfectly.
-    /// </para>
-    /// <para>
-    /// So the algorithm stays implemented and out of the default offer — see
-    /// <see cref="NTSAEAD.Supported"/> — and this test is the record of why. It is expected to
-    /// fail, and it is the thing that will say when the cause has been found.
+    /// It also took a long time to get here, and the reason is worth keeping. § 5.1 puts the
+    /// negotiated algorithm's id into the exporter context; chrony writes 15 there for sessions
+    /// running on 30, and has since it shipped the algorithm. Both sides then derive a key the
+    /// RFC does not describe — and agree on it perfectly, which is why no Norn-to-Norn test could
+    /// ever see it and why the key exchange succeeded while every packet after it failed. IANA
+    /// record type 1024 is how the two implementations agree to stop; this test is the compliant
+    /// half of that negotiation, and <see cref="Chronyd_AcceptsTheOlderExporterContextToo"/> the
+    /// other.
     /// </para>
     /// </remarks>
     [Test]
-    [Category(TestCategories.KnownIssue)]
-    public async Task Chronyd_AndGcmSiv_DoNotYetInteroperate()
+    public async Task Chronyd_AndGcmSiv_Interoperate()
     {
 
         if (chrony is null)
@@ -204,18 +203,90 @@ public class ChronyNtsServerTests
         var result  = await client.GetNTSKERecords();
 
         Assert.That(result.Success, Is.True,
-                    $"the key exchange itself works and agrees on the algorithm: {result.ErrorMessage}");
+                    $"the key exchange failed: {result.ErrorMessage}");
 
-        Assert.That(result.Response!.AEADAlgorithm,
-                    Is.EqualTo(AEADAlgorithms.AES_128_GCM_SIV),
-                    "chronyd accepts the algorithm when it is the only one offered");
+        var response = result.Response!;
 
-        var query = await client.QueryTime(NTSKEResponse: result.Response!);
+        Assert.Multiple(() => {
+
+            Assert.That(response.AEADAlgorithm,
+                        Is.EqualTo(AEADAlgorithms.AES_128_GCM_SIV),
+                        "chronyd accepts the algorithm when it is the only one offered");
+
+            Assert.That(response.CompliantAES128GCMSIVExporterContext,
+                        Is.True,
+                        "chronyd echoed record 1024, so both sides are on § 5.1's context");
+
+            Assert.That(response.C2SKey.Length, Is.EqualTo(16),
+                        "algorithm 30 takes a sixteen-octet key");
+
+        });
+
+        var query = await client.QueryTime(NTSKEResponse: response);
 
         Assert.That(query.Success,
                     Is.True,
-                    $"chronyd agreed on AES-128-GCM-SIV and then could not read the query. " +
-                    $"This is the open defect: {query.ErrorMessage}");
+                    $"chronyd agreed on AES-128-GCM-SIV and then could not read the query: {query.ErrorMessage}");
+
+    }
+
+
+    /// <summary>
+    /// And the same session on chrony's older exporter context, which is what isolates the cause
+    /// to those two octets.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Identical to the test above in every respect a packet can show — same algorithm, same
+    /// sixteen-octet key length, same twelve-octet nonce, same framing, same associated data —
+    /// except that the client does not send record 1024, so chronyd does not echo it and both
+    /// sides write algorithm id 15 into the exporter context instead of 30. It works, and before
+    /// record 1024 was implemented the other one did not. One variable, two outcomes.
+    /// </para>
+    /// <para>
+    /// It is also not merely a diagnostic. Every chronyd that predates the record derives keys
+    /// this way and there is no negotiating with it, so this is the dialect Norn must still speak
+    /// to reach those servers at all.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task Chronyd_AcceptsTheOlderExporterContextToo()
+    {
+
+        if (chrony is null)
+        {
+            Assert.Ignore("chronyd is not running");
+            return;
+        }
+
+        var client  = CreateClient(aeadAlgorithms:           [ AEADAlgorithms.AES_128_GCM_SIV ],
+                                   compliantExporterContext: false);
+
+        var result  = await client.GetNTSKERecords();
+
+        Assert.That(result.Success, Is.True,
+                    $"the key exchange failed: {result.ErrorMessage}");
+
+        var response = result.Response!;
+
+        Assert.Multiple(() => {
+
+            Assert.That(response.AEADAlgorithm,
+                        Is.EqualTo(AEADAlgorithms.AES_128_GCM_SIV));
+
+            Assert.That(response.CompliantAES128GCMSIVExporterContext,
+                        Is.False,
+                        "nothing was claimed, so chronyd must not have echoed record 1024");
+
+        });
+
+        var query = await client.QueryTime(NTSKEResponse: response);
+
+        Assert.That(query.Success,
+                    Is.True,
+                    $"chronyd could not read a query keyed with algorithm id 15 in the exporter " +
+                    $"context, which is the derivation it uses when nobody asks for the other: " +
+                    $"{query.ErrorMessage}");
 
     }
 
