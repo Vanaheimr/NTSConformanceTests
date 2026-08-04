@@ -46,7 +46,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state: **535 tests green** in the hermetic gate, and no open defect — the one
+Verified state: **538 tests green** in the hermetic gate, and no open defect — the one
 `KnownIssue` this suite has ever carried, AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
@@ -169,6 +169,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 8452 | AES-GCM-SIV: all 24 published AEAD_AES_128_GCM_SIV vectors, encrypt and decrypt, and a full session on it against chronyd, Cloudflare and time.nl | ✅ |
 | 8915 §4.1.5 | AEAD negotiation with more than one candidate: the server chooses from the client's list in the client's order, skips what it cannot perform, and the choice reaches the exported key length, the cookie size and the authenticator's nonce length | ✅ |
 | 8915 §5.1 | The five-octet exporter context, byte-exact per algorithm and direction | ✅ |
+| §7.6 | Every record type Norn names is either assigned to something it implements or inside IANA's Private or Experimental Use range — its two vendor records used to sit at 32 and 33, inside the range reserved for IETF Review | ✅ |
 | IANA 1024 | Compliant AES-128-GCM-SIV Exporter Context: claimed when offering algorithm 30, echoed only when 30 was agreed and asked for, and chrony's non-compliant derivation used when it was not — see [above](#the-aes-128-gcm-siv-exporter-context) | ✅ |
 | 5297 | AES-SIV-CMAC-384 and -512 | — |
 | 8452 | AEAD_AES_256_GCM_SIV (31): implemented and vector-correct, never run against another implementation, so not offered | ⬜ |
