@@ -110,6 +110,7 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
     private readonly List<String>                                           failures = [];
     private readonly Task                                                   acceptLoop;
     private readonly Boolean                                                offerAlpn;
+    private readonly SslProtocols                                           enabledSslProtocols;
     private          Int32                                                  connectionsClosedWithoutRequest;
 
     #endregion
@@ -177,13 +178,15 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
     private ScriptedNtsKeServer(TcpListener                                                          Listener,
                                 System.Security.Cryptography.X509Certificates.X509Certificate2       Certificate,
                                 Func<CapturedNtsKeRequest, Byte[]?>                                  Respond,
-                                Boolean                                                              OfferAlpn)
+                                Boolean                                                              OfferAlpn,
+                                SslProtocols                                                         EnabledSslProtocols)
     {
 
-        this.listener     = Listener;
-        this.certificate  = Certificate;
-        this.respond      = Respond;
-        this.offerAlpn    = OfferAlpn;
+        this.listener             = Listener;
+        this.certificate          = Certificate;
+        this.respond              = Respond;
+        this.offerAlpn            = OfferAlpn;
+        this.enabledSslProtocols  = EnabledSslProtocols;
         this.Port         = IPPort.Parse(((IPEndPoint) Listener.LocalEndpoint).Port);
         this.acceptLoop   = Task.Run(AcceptLoop);
 
@@ -209,9 +212,15 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
     /// Whether to select <c>ntske/1</c>. Off lets a test see what Norn's client does with a
     /// server that completes the handshake without naming the protocol.
     /// </param>
-    public static ScriptedNtsKeServer Start(TestCertificate?                      Certificate   = null,
-                                            Func<CapturedNtsKeRequest, Byte[]?>?  Respond       = null,
-                                            Boolean                               OfferAlpn     = true)
+    /// <param name="EnabledSslProtocols">
+    /// Which TLS versions to accept. Defaults to TLS 1.3, which is the only one RFC 8915 § 3
+    /// permits; naming an older one is how a test finds out whether a client will be talked down
+    /// to it.
+    /// </param>
+    public static ScriptedNtsKeServer Start(TestCertificate?                      Certificate           = null,
+                                            Func<CapturedNtsKeRequest, Byte[]?>?  Respond               = null,
+                                            Boolean                               OfferAlpn             = true,
+                                            SslProtocols?                         EnabledSslProtocols   = null)
     {
 
         // Port 0 and read back what was bound. Norn's server cannot do this — hence FreePort and
@@ -224,7 +233,8 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
                    listener,
                    (Certificate ?? TestCertificate.Generate("nts-ke.test", [ "nts-ke.test" ])).ToDotNetWithPrivateKey(),
                    Respond ?? Mirror,
-                   OfferAlpn
+                   OfferAlpn,
+                   EnabledSslProtocols ?? SslProtocols.Tls13
                );
 
     }
@@ -321,7 +331,7 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
 
                 var options = new SslServerAuthenticationOptions {
                                   ServerCertificate     = certificate,
-                                  EnabledSslProtocols   = SslProtocols.Tls13,
+                                  EnabledSslProtocols   = enabledSslProtocols,
                                   ClientCertificateRequired = false
                               };
 

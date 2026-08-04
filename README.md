@@ -46,7 +46,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state: **538 tests green** in the hermetic gate, and no open defect — the one
+Verified state: **541 tests green** in the hermetic gate, and no open defect — the one
 `KnownIssue` this suite has ever carried, AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
@@ -135,6 +135,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | RFC | Focus | |
 |---|---|:--:|
 | §4 | NTS-KE over TLS 1.3 with ALPN `ntske/1`, offered and echoed; TLS 1.2 refused | ✅ |
+| §3 | TLS 1.3 or nothing, on the client's side too: a server offering only TLS 1.2 gets no handshake and no records, and one offering both is taken up on 1.3. A certificate the client will not accept is reported as a certificate failure rather than a TLS one — both arrive from the same handshake | ✅ |
 | §3, §4 | `ntske/1` as a precondition on both sides: a server that completes the handshake without selecting it is refused by the client before a single record is sent, and a client that offers no ALPN extension is refused by the server during the ClientHello | ✅ |
 | §4.1 | Record framing: 16-bit type with the critical bit separated out, body length excluding the header, a body overrunning the message rejected, unknown records rejected only when critical | ✅ |
 | §4.1.1 | End of Message: present, critical, empty, and last — and, in the client's request, with nothing following it on the wire | ✅ |

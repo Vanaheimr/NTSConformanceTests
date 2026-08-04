@@ -1,3 +1,5 @@
+using System.Security.Authentication;
+
 using NUnit.Framework;
 
 using org.GraphDefined.Vanaheimr.Hermod;
@@ -149,6 +151,143 @@ public class ClientRequestOnTheWireTests
                         $"and the client did get that far — it completed the handshake and then " +
                         $"walked away, rather than never arriving. Server failures: " +
                         $"{String.Join("; ", server.Failures)}");
+
+        });
+
+    }
+
+    #endregion
+
+    #region TLS 1.3 or nothing
+
+    /// <summary>
+    /// A server that speaks only TLS 1.2 gets no handshake, and no records.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// RFC 8915 § 3: "Implementations MUST NOT negotiate TLS versions earlier than 1.3." A MUST
+    /// NOT, unlike most of what this fixture pins, and it binds both ends — which is the point of
+    /// asserting it here as well as against the server. The suite has driven <c>gnutls-cli</c> at
+    /// Norn's server with a TLS 1.2-only priority string since the interop project existed; the
+    /// client half had no peer that could offer the downgrade.
+    /// </para>
+    /// <para>
+    /// Norn's client refuses it by never offering anything else — <c>GetProtocolVersions</c>
+    /// returns TLS 1.3 alone, so the ClientHello leaves the server nothing to select and the
+    /// handshake dies there. That is the strongest form: there is no code path in which a
+    /// downgrade is considered and then declined.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AServerSpeakingOnlyTls12_IsRefused()
+    {
+
+        await using var server = ScriptedNtsKeServer.Start(EnabledSslProtocols: SslProtocols.Tls12);
+
+        var result = await new NTSClient(
+                               DomainName.Localhost,
+                               NTSKE_Port:                  server.Port,
+                               IPVersionPreference:         IPVersionPreference.IPv4Only,
+                               Timeout:                     TimeSpan.FromSeconds(10),
+                               RemoteCertificateValidator:  (sender, certificate, chain, tlsClient, policyErrors)
+                                                                => TLSValidationResult.Success()
+                           ).GetNTSKERecords();
+
+        Assert.Multiple(() => {
+
+            Assert.That(result.Success, Is.False,
+                        "§ 3 forbids negotiating anything earlier than TLS 1.3");
+
+            Assert.That(result.ErrorCategory, Is.EqualTo(NTSKEErrorCategory.TLSHandshake),
+                        $"the handshake is where it must fail: {result.ErrorMessage}");
+
+            Assert.That(server.Requests, Is.Empty,
+                        "and nothing may be sent over a connection that was never established");
+
+        });
+
+    }
+
+
+    /// <summary>
+    /// The control: a server offering both versions gets a TLS 1.3 session and a full exchange.
+    /// </summary>
+    /// <remarks>
+    /// Without it the refusal above is satisfied by a client that cannot talk to this server at
+    /// all — a broken certificate, a port that is not listening, anything. It also covers the
+    /// case § 3 is really about, which is not a server that lacks TLS 1.3 but one that would
+    /// happily do either and lets the client decide.
+    /// </remarks>
+    [Test]
+    public async Task AServerOfferingBothVersions_GetsTls13()
+    {
+
+        await using var server = ScriptedNtsKeServer.Start(
+                                     EnabledSslProtocols: SslProtocols.Tls12 | SslProtocols.Tls13);
+
+        var result = await new NTSClient(
+                               DomainName.Localhost,
+                               NTSKE_Port:                  server.Port,
+                               IPVersionPreference:         IPVersionPreference.IPv4Only,
+                               Timeout:                     TimeSpan.FromSeconds(10),
+                               RemoteCertificateValidator:  (sender, certificate, chain, tlsClient, policyErrors)
+                                                                => TLSValidationResult.Success()
+                           ).GetNTSKERecords();
+
+        Assert.Multiple(() => {
+
+            Assert.That(result.Success, Is.True, result.ErrorMessage);
+
+            Assert.That(result.Response?.TLSInfo?.NegotiatedTLSVersion,
+                        Is.EqualTo("TLS 1.3"),
+                        "the newer version wins when both are on offer");
+
+            Assert.That(server.Requests, Has.Count.EqualTo(1),
+                        "and the exchange went through");
+
+        });
+
+    }
+
+    /// <summary>
+    /// A certificate the client will not accept is reported as a certificate problem, not as a
+    /// TLS one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both failures arrive at the same place — the validator throws from inside
+    /// <c>NotifyServerCertificate</c>, which runs during the handshake — and telling them apart
+    /// is most of what the category is for. "I cannot speak your TLS" is a fact about the peer's
+    /// configuration; "I do not trust your certificate" is a fact about this client's trust
+    /// store, and an operator chases them in different places.
+    /// </para>
+    /// <para>
+    /// This client is built without a <c>RemoteCertificateValidator</c>, so the real chain check
+    /// applies and the scripted server's self-signed certificate fails it. Every other test in
+    /// this fixture accepts the certificate explicitly, which is what makes this one worth having
+    /// separately.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task ACertificateTheClientWillNotAccept_IsACertificateFailure()
+    {
+
+        await using var server = ScriptedNtsKeServer.Start();
+
+        var result = await new NTSClient(
+                               DomainName.Localhost,
+                               NTSKE_Port:           server.Port,
+                               IPVersionPreference:  IPVersionPreference.IPv4Only,
+                               Timeout:              TimeSpan.FromSeconds(10)
+                           ).GetNTSKERecords();
+
+        Assert.Multiple(() => {
+
+            Assert.That(result.Success, Is.False, "a self-signed certificate is not trusted");
+
+            Assert.That(result.ErrorCategory,
+                        Is.EqualTo(NTSKEErrorCategory.TLSCertificate),
+                        $"the certificate is the problem, not the TLS: {result.ErrorMessage}");
 
         });
 
