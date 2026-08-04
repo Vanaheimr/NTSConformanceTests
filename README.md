@@ -46,7 +46,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state: **541 tests green** in the hermetic gate, and no open defect — the one
+Verified state: **548 tests green** in the hermetic gate, and no open defect — the one
 `KnownIssue` this suite has ever carried, AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
@@ -151,6 +151,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | §5.1 | TLS key extraction: the exporter label and its five-octet context, byte-exact and distinct per direction | ✅ |
 | §5.3, §5.4, §5.5 | Unique Identifier echoed; Cookie and Cookie Placeholder fields, a placeholder valid only at cookie length | ✅ |
 | §5.6 | Authenticator and Encrypted extension field: associated data is the header followed by every preceding field, as one contiguous string | ✅ |
+| §5.7 | An emptied cookie pool makes the client run the key exchange again by itself, rate-limited against retry loops — nothing else recovers, because a cookie only arrives in answer to a request. The monitoring engine pre-empts it instead, refreshing while one cookie is still in reserve | ✅ |
 | §5.7 | Cookie replenishment — one per valid placeholder, capped — and an NTS NAK carrying kiss code `NTSN` for a request that attempted NTS and could not be validated | ✅ |
 | §5.7 | Response validation: missing authenticator, wrong key, tampered ciphertext, tampered associated data | ✅ |
 | §5.7 | Replay rejection of a duplicate transmit timestamp — asserted in Norn's own suite | 🟡 |

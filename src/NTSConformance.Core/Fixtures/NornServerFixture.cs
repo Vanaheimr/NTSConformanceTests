@@ -170,7 +170,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                                   TimeProvider?  timeProvider     = null,
                                   Boolean        interleavedMode  = false,
                                   IEnumerable<AEADAlgorithms>? aeadAlgorithms = null,
-                                  Boolean        compliantExporterContext = true)
+                                  Boolean        compliantExporterContext = true,
+                                  NTSCookiePoolPolicy? cookiePoolPolicy = null)
 
         => new (DomainName.Localhost,
                 NTSKE_Port:                  NTSKEPort,
@@ -180,6 +181,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                 RemoteCertificateValidator:  (sender, certificate, chain, tlsClient, policyErrors)
                                                  => TLSValidationResult.Success(),
                 InterleavedMode:             interleavedMode,
+                CookiePoolPolicy:            cookiePoolPolicy,
                 OfferedAEADAlgorithms:       aeadAlgorithms,
                 CompliantAES128GCMSIVExporterContext: compliantExporterContext,
                 TimeProvider:                timeProvider);
