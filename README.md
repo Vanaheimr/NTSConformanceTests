@@ -46,7 +46,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state: **531 tests green** in the hermetic gate, and no open defect — the one
+Verified state: **535 tests green** in the hermetic gate, and no open defect — the one
 `KnownIssue` this suite has ever carried, AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
@@ -126,6 +126,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 5905 §10–§12 | Clock filter, selection, clustering and discipline | — |
 | 9769 §2 | Interleaved client/server mode, both sides: mode selection by origin timestamp, the transmit timestamp taken after the previous response left, unique receive timestamps, one interleaved answer per receive timestamp, and a client association that survives loss and then gives up | ✅ |
 | 9769 §2 | The bounds on the server's state: a fixed-length queue per address, a capped client table evicting least-recently-used in constant time, and the mode optionally reserved for authenticated clients | ✅ |
+| 9769 §6 | The client randomizes all 64 bits of both the receive and the transmit timestamp of every request, so neither of the two values a server can echo as the origin is guessable — and the offset is computed from the T1 the client recorded rather than from the echo, which is the only T1 left once the field is a nonce | ✅ |
 | 9769 §3, §4 | Interleaved symmetric and broadcast modes | — |
 | 5905 App. A | Symmetric-key MAC: the Key Identifier and Message Digest fields parse, but are never emitted | — |
 
@@ -202,10 +203,6 @@ streams out, which is the whole of what a CLI promises.
 
 Not covered yet, in rough order of value:
 
-- **RFC 9769 § 6's timestamp randomization** — "Clients using the interleaved mode SHOULD
-  randomize all bits of receive and transmit timestamps in their requests", to make the origin
-  timestamp harder for an off-path attacker to guess. Norn's client sends its clock readings
-  as they are.
 - **RFC 8633's remaining operational advice** — § 5.1's information leakage (an access list on
   who may query at all), and § 5.2's panic threshold, which needs a Norn that steers a clock
   rather than only measuring one. § 5.4, the rate limiting and the kiss codes, is done.

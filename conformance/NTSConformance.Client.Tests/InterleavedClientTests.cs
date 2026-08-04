@@ -53,9 +53,9 @@ public class InterleavedClientTests
                         Is.False,
                         "nothing has been received yet, so there is no timestamp to echo");
 
-            Assert.That(association.NextRequestTimestamps(),
-                        Is.EqualTo((0UL, 0UL, 0UL)),
-                        "a zero origin and a zero receive timestamp are what open an association");
+            Assert.That(association.NextRequestOrigin(),
+                        Is.EqualTo(0UL),
+                        "a zero origin timestamp is what opens an association");
 
         });
 
@@ -63,18 +63,19 @@ public class InterleavedClientTests
 
 
     /// <summary>
-    /// Figure 1 of § 2, the second column onwards: after a first response, the request carries
-    /// the server's receive timestamp as its origin (t2), this client's arrival time for that
-    /// response as its receive timestamp (t4), and this client's accurate transmit timestamp of
-    /// the previous request (t1).
+    /// Figure 1 of § 2, the third column: after a first response, the request's origin is the
+    /// server's receive timestamp from it (t2). That is what lets the server find the exchange
+    /// being referred to, and it is the only value in the request the server looks at.
     ///
-    /// The last of those is the part that surprises: the transmit field of an interleaved
-    /// request is not a claim about when this packet was sent. It is the client playing the same
-    /// trick the server plays — offering the accurate timestamp of the previous transmission,
-    /// which was not available in time to go in the previous packet.
+    /// Figure 1 has the other two fields carry this client's own timestamps of the previous
+    /// exchange — its arrival time for the response (t4) and its accurate transmit timestamp of
+    /// the previous request (t1) — neither of which is a claim about the packet in hand. § 6
+    /// then replaces both with random bits, so they are no longer produced here at all; see
+    /// <see cref="NoncesAreUnpredictable_AndUsable"/>. The real values stay in the association,
+    /// where the measurement is made from them.
     /// </summary>
     [Test]
-    public void AfterAResponse_TheNextRequestCarriesThePreviousExchange()
+    public void AfterAResponse_TheNextRequestEchoesTheServersReceiveTimestamp()
     {
 
         const UInt64 t1 = 0xAAAA_0000_0000_0001;   // our accurate transmit of request 1
@@ -94,9 +95,9 @@ public class InterleavedClientTests
 
             Assert.That(association.CanSendInterleaved, Is.True);
 
-            Assert.That(association.NextRequestTimestamps(),
-                        Is.EqualTo((t2, t4, t1)),
-                        "origin t2, receive t4, transmit t1 — Figure 1's third column");
+            Assert.That(association.NextRequestOrigin(),
+                        Is.EqualTo(t2),
+                        "origin t2 — Figure 1's third column");
 
         });
 
@@ -175,10 +176,11 @@ public class InterleavedClientTests
 
         var association = Established();
 
-        var before = association.NextRequestTimestamps();
+        var before = association.NextRequestOrigin();
 
+        Assert.That(before, Is.Not.EqualTo(0UL), "there is an association to keep");
         Assert.That(association.RecordUnansweredRequest(), Is.True, "the association should hold");
-        Assert.That(association.NextRequestTimestamps(),
+        Assert.That(association.NextRequestOrigin(),
                     Is.EqualTo(before),
                     "and the next request repeats the same origin timestamp");
 
