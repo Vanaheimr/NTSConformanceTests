@@ -99,11 +99,15 @@ public static class TestEnvironment
     {
 
         if (!Wsl.IsAvailable)
-            Assert.Ignore("WSL is not available — skipping. Install WSL and: apt-get install chrony ntpd-rs gnutls-bin");
+            Assert.Ignore(Wsl.UsesWslBridge
+                              ? "WSL is not available — skipping. Install WSL and: apt-get install chrony ntpd-rs gnutls-bin"
+                              : "No POSIX shell available — skipping.");
 
         foreach (var tool in tools)
             if (!Wsl.HasTool(tool))
-                Assert.Ignore($"'{tool}' not found inside WSL — skipping. Install it, e.g.: wsl -u root apt-get install -y chrony ntpd-rs gnutls-bin");
+                Assert.Ignore(Wsl.UsesWslBridge
+                                  ? $"'{tool}' not found inside WSL — skipping. Install it, e.g.: wsl -u root apt-get install -y chrony ntpd-rs gnutls-bin"
+                                  : $"'{tool}' not found on this host — skipping. Install it, e.g.: apt-get install -y chrony ntpd-rs gnutls-bin");
 
     }
 

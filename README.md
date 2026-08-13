@@ -214,10 +214,12 @@ Not covered yet, in rough order of value:
   from here offers it.
 - **RFC 5905 §10–§12** — the clock filter and selection algorithms, once Norn does more than
   measure: its monitoring engine computes offsets but steers nothing.
-- **NTS pools** — `draft-venhoek-nts-pool`, which the working group leaned towards adopting as
-  Experimental in February 2026, and which ntpd-rs already ships behind a flag. It builds on
-  §4.1.7 and §4.1.8, both of which now work here, so a pool key exchange in front of Norn
-  would be a realistic test rather than a speculative one.
+- **NTS pools** — adopted by the working group as `draft-ietf-ntp-nts-keyexchange-pool`
+  (Experimental; -01 as of July 2026), with IANA early allocations for its NTS-KE record
+  types 8–14 since June 2026. ntpd-rs 1.9 already emits the allocated codepoints — though
+  Debian trixie still ships 1.4, so exercising them against Norn needs an upstream build.
+  The draft builds on §4.1.7 and §4.1.8, both of which now work here, so a pool key exchange
+  in front of Norn would be a realistic test rather than a speculative one.
 
 ### Out of scope
 
@@ -252,7 +254,7 @@ src/NTSConformance.Core/                 the harness
   TestClock.cs                           a TimeProvider the test controls: frozen, or displaced
   UdpRelayProbe.cs                       a loopback socket that records who sent what, and can pass it on
   TestEnvironment.cs                     capability probing, Assert.Ignore gating
-  Wsl.cs                                 WSL bridge, host↔VM addressing
+  Wsl.cs                                 WSL bridge on Windows, /bin/sh natively on GNU/Linux
 conformance/
   NTSConformance.WireFormat.Tests/       RFC 5905 header, RFC 7822 framing, timestamps, the registries
   NTSConformance.Crypto.Tests/           RFC 5297 / 4493 vectors, differential vs reference
@@ -285,7 +287,7 @@ above; it is how an open deviation would be exercised once one is recorded:
 dotnet test NTSConformanceTests.slnx --filter "TestCategory!=Online&TestCategory!=WSL"
 ```
 
-GNU/Linux tool interop (needs WSL, see below):
+GNU/Linux tool interop — through WSL on Windows, natively on a GNU/Linux host (see below):
 
 ```bash
 dotnet test NTSConformanceTests.slnx --filter "TestCategory=WSL"
@@ -329,13 +331,31 @@ dotnet run --project libs/Norn/NornCLI -- serve --port 12123 --ke-port 14460 --l
 | Category | Meaning |
 |---|---|
 | `Online` | Needs outbound internet to public NTS servers |
-| `WSL` | Needs WSL with chrony / ntpd-rs / gnutls installed |
+| `WSL` | Needs chrony / ntpd-rs / gnutls — inside WSL on Windows, installed natively on GNU/Linux |
 | `Loopback` | Drives a real in-process Norn server over loopback |
 | `Slow` | Runs longer than about five seconds |
 | `KnownIssue` | Pins an open defect — none at present |
 
 Tests whose prerequisites are missing call `Assert.Ignore` with the command needed to
 satisfy them, rather than failing.
+
+## CI
+
+Two workflows, the same shape as the SSH and DNS suites:
+
+- **`ci.yml`** gates every push and pull request with the hermetic set above — no network,
+  no external tools — on `windows-latest` and in a `debian:13` container, because TLS 1.3
+  and the §5.1 exporter go through SChannel on one leg and OpenSSL on the other, and the
+  suite already owns a test (RFC 5480 named curves) that only exists because those two
+  disagree. A red gate is a conformance change, never a slow server.
+- **`nightly.yml`** runs what cannot gate a merge: the interop lane natively in the Debian
+  container, where chronyd, ntpd-rs and gnutls-cli sit on the same loopback as Norn — so the
+  client direction that Windows Firewall blocks on a developer machine runs every night, and
+  trixie's chrony 4.6.1 and ntpd-rs 1.4.0 are the same versions the interop table above
+  names. The public-server lane runs as an informational step whose failures are read as
+  runner egress, not as findings. And a referee job moves all three submodules to master and
+  asks the question the pinned gate structurally cannot: whether the suite still agrees with
+  what Norn is about to become.
 
 ## Prerequisites
 
@@ -365,6 +385,13 @@ a machine where it is blocked still reports honestly.
 
 ntpd-rs is handed a certificate carrying the Windows host's address as an **IP** subject
 alternative name: rustls ignores the Common Name entirely and matches only against SANs.
+
+On a GNU/Linux host there is no WSL to bridge to and none is needed: the same tests run the
+tools natively, on the same loopback as the server under test, with no firewall in between —
+so the client-direction tests that skip on a locked-down Windows machine simply run. That
+takes the three packages above plus the fixture plumbing — `openssl` for the throwaway
+certificates, `iproute2` for `ss`, `procps` for `pkill` — which is exactly what the nightly
+CI installs into its Debian 13 container.
 
 ## Conventions
 

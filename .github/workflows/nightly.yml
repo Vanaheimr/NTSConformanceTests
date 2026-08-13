@@ -1,0 +1,192 @@
+name: Nightly
+
+# The counterpart to ci.yml, which gates every push on the offline tests alone.
+# This runs the two lanes that cannot gate a merge — the ones that drive real
+# chronyd, ntpd-rs and gnutls-cli processes, and the ones that query public NTS
+# servers — plus the question the gate structurally cannot ask: does the suite
+# still agree with Norn's *current* master, rather than with the revision the
+# gitlinks pin?
+#
+# The interop lane is the main reason this workflow exists. On the Windows
+# developer machine those tools live inside WSL, and the reverse direction —
+# chronyd or ntpd-rs as a *client* against a Norn server on the host — needs
+# inbound TCP and UDP from the WSL subnet, which Windows Firewall blocks by
+# default; on a current dev-box run, 18 of 30 interop tests skip for exactly
+# that reason. In this container the tools are native, on the same loopback as
+# the server under test, with no firewall in between — so all of them run.
+#
+# Two things worth knowing about scheduled workflows: they only ever run on the
+# default branch, and GitHub disables them after 60 days without repository
+# activity. If this stops reporting, that is the first thing to check.
+on:
+  schedule:
+    # 03:23 UTC. Off the hour on purpose: GitHub's scheduler is busiest then
+    # and delays runs by tens of minutes.
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # The full suite against the pinned submodules, on both platforms.
+  # ---------------------------------------------------------------------------
+  full-suite:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            leg: windows-latest
+          - os: ubuntu-latest
+            container: debian:13
+            leg: debian-13-container
+    name: full-suite (${{ matrix.leg }})
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    steps:
+
+      # git must be installed BEFORE the checkout: without a git binary,
+      # actions/checkout silently falls back to a REST tarball, which cannot
+      # fetch submodules — and libs/Norn IS the system under test.
+      - name: Install git and the .NET prerequisites (Debian container)
+        if: runner.os == 'Linux'
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+
+      # The interop peers, native. trixie ships chrony 4.6.1 (built with +NTS —
+      # the fixtures check the version banner and would skip, saying so, if it
+      # were not) and ntpd-rs 1.4.0, the exact versions the README documents
+      # for the WSL setup, so this lane and the developer machine judge Norn by
+      # the same peers.
+      #
+      # The last three packages are fixture plumbing rather than peers, and
+      # none of them is in the bare container: openssl generates the throwaway
+      # server certificates, iproute2 provides the `ss` the fixtures poll until
+      # chronyd/ntp-daemon listen, and procps provides the `pkill` their
+      # teardown uses.
+      - name: Install the NTS tools (Debian container)
+        if: runner.os == 'Linux'
+        run: apt-get install -y --no-install-recommends chrony ntpd-rs gnutls-bin openssl iproute2 procps
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build NTSConformanceTests.slnx --configuration Release
+
+      # Fatal: the same set the gate runs. Repeating it nightly catches tests
+      # that only fail sometimes.
+      - name: Test (offline gate)
+        timeout-minutes: 30
+        run: >
+          dotnet test NTSConformanceTests.slnx --configuration Release --no-build
+          --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
+          --logger "console;verbosity=normal"
+          --logger "trx;LogFileName=offline-${{ matrix.leg }}.trx"
+          --results-directory artifacts
+
+      # Fatal on Linux, where the tools are present and on the same loopback: a
+      # red here is a real interoperability regression — chronyd, ntpd-rs or
+      # gnutls-cli disagreeing with what Norn put on the wire, in either
+      # direction. On Windows there is no WSL on a hosted runner, so every test
+      # in this category skips with that reason and the step passes trivially.
+      - name: Test (interop against chronyd, ntpd-rs, gnutls-cli)
+        timeout-minutes: 45
+        run: >
+          dotnet test NTSConformanceTests.slnx --configuration Release --no-build
+          --filter "TestCategory=WSL"
+          --logger "console;verbosity=normal"
+          --logger "trx;LogFileName=interop-${{ matrix.leg }}.trx"
+          --results-directory artifacts
+
+      # Informational, and it has to be. These run real NTS sessions against
+      # Cloudflare, PTB, Netnod and time.nl, and a hosted runner is not a
+      # normal client: datacentre egress on UDP/123 is often filtered, TCP/4460
+      # is not universally reachable, and public servers may rate-limit these
+      # address ranges. A failure here means "the runner could not ask", which
+      # says nothing about Norn — so it must not be able to turn the night red.
+      # Read the numbers for a trend; a sudden failure of every server at once
+      # IS worth looking at.
+      - name: Test (public NTS servers, informational)
+        continue-on-error: true
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set +e
+          dotnet test NTSConformanceTests.slnx --configuration Release --no-build \
+            --filter "TestCategory=Online" --logger "console;verbosity=normal" 2>&1 | tee online.txt
+          {
+            echo '## Public NTS servers (informational, ${{ matrix.leg }})'
+            echo
+            echo 'Network-dependent: failures here reflect runner egress, not Norn.'
+            echo
+            echo '```'
+            grep -E "Passed!|Failed!|error|Passed:|Failed:" online.txt || tail -5 online.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      # TRX preserves the skip reasons — which is most of what the interop lane
+      # says on a leg where a tool is missing, and the evidence when a lane
+      # goes red.
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-nightly-${{ matrix.leg }}
+          path: artifacts/*.trx
+
+  # ---------------------------------------------------------------------------
+  # The referee job: the same suite against Norn's current master.
+  # ---------------------------------------------------------------------------
+  against-norn-master:
+    # The gate above tests the revision the gitlinks pin, which is the right
+    # question for "would a fresh clone build". It is the wrong question for
+    # what this repository claims to be — an adversarial referee that can be
+    # pointed at any Norn revision. Nothing in the gate notices when Norn
+    # moves, because a push to Norn does not touch this repository at all.
+    #
+    # So: check all three submodules out at master and run the offline suite
+    # against them. Red here means Norn (or Hermod or Styx underneath it)
+    # changed in a way the suite disagrees with, and it is a finding rather
+    # than a build failure — which is why this job is separate from the one
+    # above, and why the interop and online lanes are left out. One question at
+    # a time.
+    runs-on: ubuntu-latest
+    container: debian:13
+    steps:
+      - name: Install git and the .NET prerequisites (Debian container)
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Move the submodules to master
+        run: |
+          git config --global --add safe.directory '*'
+          git submodule foreach 'git fetch origin master && git checkout FETCH_HEAD'
+          echo "### Submodule revisions under test" >> "$GITHUB_STEP_SUMMARY"
+          git submodule status >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build NTSConformanceTests.slnx --configuration Release
+
+      - name: Test (offline gate, against Norn master)
+        timeout-minutes: 30
+        run: >
+          dotnet test NTSConformanceTests.slnx --configuration Release --no-build
+          --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
+          --logger "console;verbosity=normal"

@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  # Manual runs from the Actions tab ("Run workflow"), same as nightly.yml.
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-suite:
+    # The same two legs as the SSH and DNS conformance suites, for the same
+    # reason: a conformance result that only holds on one platform is worth
+    # knowing about. For NTS the split is real — TLS 1.3 and the RFC 8915 §5.1
+    # exporter go through SChannel on Windows and OpenSSL on Debian, and the
+    # suite already carries a test (RFC 5480 named curves) that exists only
+    # because SChannel/CNG rejects what OpenSSL accepts.
+    #
+    # Debian 13 rather than the .NET SDK image, and rather than Ubuntu: it is
+    # what the interop tools are pinned against (trixie ships chrony 4.6.1 and
+    # ntpd-rs 1.4.0, the exact versions the README documents), and the nightly
+    # runs those tools natively in this same container image.
+    #
+    # fail-fast is off on purpose — "red on exactly one platform" is the most
+    # informative thing this matrix can produce, so one leg must not cancel the
+    # other.
+    #
+    # `leg` exists so the two runs can be told apart by name rather than by
+    # runner image: the Linux leg runs on ubuntu-latest but IS Debian 13, and
+    # an artifact called "test-results-ubuntu-latest" would say the opposite of
+    # what it contains.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            leg: windows-latest
+          - os: ubuntu-latest
+            container: debian:13
+            leg: debian-13-container
+    name: ${{ matrix.leg }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    steps:
+
+      # This runs BEFORE the checkout, which is the unusual part — and it has
+      # to. actions/checkout only produces a git clone when it finds a git
+      # binary; without one it silently falls back to downloading a source
+      # tarball over the REST API, and that path cannot fetch submodules at
+      # all. Here that would not even fail loudly: libs/Norn IS the system
+      # under test, so a tarball checkout would just build nothing.
+      #
+      # The rest is what a bare debian:13 needs before setup-dotnet can install
+      # the SDK: curl for the install script, ICU and tzdata for globalization,
+      # libssl3t64 for crypto (this is where the BCL's TLS 1.3 comes from on
+      # this leg), ca-certificates for NuGet over HTTPS. Package names verified
+      # on trixie.
+      - name: Install git and the .NET prerequisites (Debian container)
+        if: runner.os == 'Linux'
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+
+      # The recursive checkout gets Styx, Hermod and Norn at the revisions the
+      # gitlinks name. That is the point: the gate tests the pinned set, which
+      # is what a fresh clone would build. Testing against Norn's current
+      # master is the nightly's job, and deliberately a different question.
+      # All three .gitmodules URLs are public (https://github.com/Vanaheimr/…),
+      # which is what lets this work with no deploy key and no URL rewriting.
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build NTSConformanceTests.slnx --configuration Release
+
+      # The hermetic gate, exactly as the README documents it: everything that
+      # needs no network and no external tools. No public NTS servers, no
+      # chronyd — so a red here means a conformance result changed, never that
+      # a server was slow or a package was missing. That is what makes it
+      # usable as a merge gate.
+      #
+      # KnownIssue is excluded for the same reason it exists: it pins an open,
+      # documented RFC deviation while it is being fixed, and the gate must
+      # stay green while it does. Nothing carries the tag at present.
+      #
+      # Online and WSL run in nightly.yml, where a network failure can be read
+      # as a network failure instead of turning a merge red.
+      - name: Test (offline gate)
+        timeout-minutes: 25
+        run: >
+          dotnet test NTSConformanceTests.slnx --configuration Release --no-build
+          --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
+          --logger "console;verbosity=normal"
+          --logger "trx;LogFileName=${{ matrix.leg }}.trx"
+          --results-directory artifacts
+
+      # Which checks ran, which skipped and with what reason is the single most
+      # useful thing this workflow knows, and it is exactly what the console
+      # log does not preserve once a run ages out. TRX keeps it per test,
+      # including the skip reason.
+      #
+      # !cancelled() rather than success(): a red run is when these files
+      # matter most, and uploading only on green would throw away the evidence
+      # in exactly that case. A build that fails before the test step leaves no
+      # .trx at all, which upload-artifact reports as a warning rather than a
+      # second failure — the build error is the finding there.
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.leg }}
+          path: artifacts/*.trx
