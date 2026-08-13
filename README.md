@@ -1,5 +1,8 @@
 # Norn NTP/NTS Conformance & Interoperability Test Suite
 
+[![CI](https://github.com/Vanaheimr/NTSConformanceTests/actions/workflows/ci.yml/badge.svg)](https://github.com/Vanaheimr/NTSConformanceTests/actions/workflows/ci.yml)
+[![Nightly](https://github.com/Vanaheimr/NTSConformanceTests/actions/workflows/nightly.yml/badge.svg)](https://github.com/Vanaheimr/NTSConformanceTests/actions/workflows/nightly.yml)
+
 An adversarial conformance suite for [Norn](libs/Norn), the Vanaheimr NTP/NTS
 implementation, plus interoperability tests against independent implementations.
 
