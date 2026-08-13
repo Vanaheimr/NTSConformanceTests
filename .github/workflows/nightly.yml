@@ -96,7 +96,7 @@ jobs:
           dotnet test NTSConformanceTests.slnx --configuration Release --no-build
           --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
           --logger "console;verbosity=normal"
-          --logger "trx;LogFileName=offline-${{ matrix.leg }}.trx"
+          --logger "trx;LogFilePrefix=offline-${{ matrix.leg }}"
           --results-directory artifacts
 
       # Fatal on Linux, where the tools are present and on the same loopback: a
@@ -110,7 +110,7 @@ jobs:
           dotnet test NTSConformanceTests.slnx --configuration Release --no-build
           --filter "TestCategory=WSL"
           --logger "console;verbosity=normal"
-          --logger "trx;LogFileName=interop-${{ matrix.leg }}.trx"
+          --logger "trx;LogFilePrefix=interop-${{ matrix.leg }}"
           --results-directory artifacts
 
       # Informational, and it has to be. These run real NTS sessions against
@@ -129,7 +129,7 @@ jobs:
           set +e
           dotnet test NTSConformanceTests.slnx --configuration Release --no-build \
             --filter "TestCategory=Online" --logger "console;verbosity=normal" \
-            --logger "trx;LogFileName=online-${{ matrix.leg }}.trx" \
+            --logger "trx;LogFilePrefix=online-${{ matrix.leg }}" \
             --results-directory artifacts 2>&1 | tee online.txt
           {
             echo '## Public NTS servers (informational, ${{ matrix.leg }})'

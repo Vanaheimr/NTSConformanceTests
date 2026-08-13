@@ -128,10 +128,12 @@ public class InterleavedNonceTests
     /// </para>
     /// <para>
     /// "No reading of its clock" is asserted as a distance: a real NTP timestamp for the moment
-    /// the packet is sent is within seconds of now, and a random 64-bit value is a date somewhere
-    /// in a 136-year era, so being more than a year away is a bound a clock reading cannot
-    /// satisfy and a nonce satisfies with probability better than 99.2%. Two fields over two
-    /// requests give four independent draws.
+    /// the packet is sent is within seconds of now — the relay and the client share a host — and
+    /// a random 64-bit value is a date somewhere in a 136-year era. The bound is one hour: no
+    /// clock reading can be that far out, and a nonce lands inside it with probability about two
+    /// in a million per draw. It was one year once, which a legitimate nonce hits one draw in
+    /// seventy — with several draws per run, that turned a hosted runner red twice before the
+    /// arithmetic was done.
     /// </para>
     /// </remarks>
     [Test]
@@ -176,7 +178,7 @@ public class InterleavedNonceTests
                     $"the relay saw {requests.Length} client requests");
 
         var now       = RawNtpTimestamp.FromDateTime(DateTime.UtcNow);
-        var oneYear   = 365UL * 24 * 3600UL << 32;
+        var oneHour   = 3600UL << 32;
 
         Assert.Multiple(() => {
 
@@ -192,13 +194,13 @@ public class InterleavedNonceTests
             foreach (var (request, index) in requests.Select((request, index) => (request!, index)))
             {
 
-                Assert.That(Distance(request.TransmitTimestamp, now), Is.GreaterThan(oneYear),
+                Assert.That(Distance(request.TransmitTimestamp, now), Is.GreaterThan(oneHour),
                             $"request {index + 1}'s transmit timestamp is a plausible clock reading: " +
                             $"{request.TransmitTimestamp:X16}");
 
                 // Every request after the opening one carries a nonce here instead.
                 if (index > 0)
-                    Assert.That(Distance(request.ReceiveTimestamp, now), Is.GreaterThan(oneYear),
+                    Assert.That(Distance(request.ReceiveTimestamp, now), Is.GreaterThan(oneHour),
                                 $"request {index + 1}'s receive timestamp is a plausible clock reading: " +
                                 $"{request.ReceiveTimestamp:X16}");
 

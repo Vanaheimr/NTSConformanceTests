@@ -108,7 +108,7 @@ jobs:
           dotnet test NTSConformanceTests.slnx --configuration Release --no-build
           --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
           --logger "console;verbosity=normal"
-          --logger "trx;LogFileName=${{ matrix.leg }}.trx"
+          --logger "trx;LogFilePrefix=${{ matrix.leg }}"
           --results-directory artifacts
 
       # Which checks ran, which skipped and with what reason is the single most
