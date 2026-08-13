@@ -311,6 +311,13 @@ public class InterleavedModeTests
 
         var first   = BasicExchange();
 
+        // That timestamp is captured after the send, so on a loaded machine the capture can
+        // lose a microsecond race against this next request arriving — the first nightly's
+        // referee lost it by 19 µs. A real client cannot ask faster than its own network
+        // turnaround; granting the capture that head start keeps the assertion below strict
+        // where it discriminates.
+        Thread.Sleep(50);
+
         var second  = Exchange(Request(origin:    first.ReceiveTimestamp,
                                        receive:   ClientTimestamp(),
                                        transmit:  ClientTimestamp()));
