@@ -57,6 +57,10 @@ public class AgainstAServerTests
              .. arguments[0] == "query" ? new[] { "--port", fixture!.NTPPort.ToString() } : [],
              "--insecure",
              "--ipv4",
+             // The CLI's defaults are sized for humans on healthy machines. A starved CI
+             // runner has taken more than the default 5 s over a loopback TLS handshake,
+             // and a slow green tells the truth where a fast red does not.
+             "--timeout", "30",
              "localhost" ];
 
 
