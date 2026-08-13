@@ -64,6 +64,15 @@ jobs:
         if: runner.os == 'Linux'
         run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
 
+      # Windows only: Hermod carries FontAwesome icon files whose paths exceed
+      # MAX_PATH once nested under the runner's workspace and libs/Hermod.
+      # Without this the submodule checkout fails with "Filename too long" and
+      # leaves the working tree half-populated. The 2026-08-03 CI attempt
+      # learned this the hard way, and it is still true.
+      - name: Allow long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+
       # The recursive checkout gets Styx, Hermod and Norn at the revisions the
       # gitlinks name. That is the point: the gate tests the pinned set, which
       # is what a fresh clone would build. Testing against Norn's current

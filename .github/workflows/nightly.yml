@@ -71,6 +71,12 @@ jobs:
         if: runner.os == 'Linux'
         run: apt-get install -y --no-install-recommends chrony ntpd-rs gnutls-bin openssl iproute2 procps
 
+      # Same reason as in ci.yml: without core.longpaths the Windows submodule
+      # checkout dies on Hermod's FontAwesome paths with "Filename too long".
+      - name: Allow long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+
       - uses: actions/checkout@v7
         with:
           submodules: recursive
@@ -122,7 +128,9 @@ jobs:
         run: |
           set +e
           dotnet test NTSConformanceTests.slnx --configuration Release --no-build \
-            --filter "TestCategory=Online" --logger "console;verbosity=normal" 2>&1 | tee online.txt
+            --filter "TestCategory=Online" --logger "console;verbosity=normal" \
+            --logger "trx;LogFileName=online-${{ matrix.leg }}.trx" \
+            --results-directory artifacts 2>&1 | tee online.txt
           {
             echo '## Public NTS servers (informational, ${{ matrix.leg }})'
             echo
