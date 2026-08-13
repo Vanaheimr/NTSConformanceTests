@@ -105,6 +105,14 @@ public class RateKissOnTheWireTests
 
         Assert.That(kiss, Is.Not.Null, "the first refusal should be explained, not silent");
 
+        // The kiss is on the wire before the server's counter moves — the worker sends first
+        // and increments after — so on a loaded machine this client can hold the datagram
+        // while the count still reads zero. Wait for the counter rather than reading it
+        // mid-step; the assertion below still demands exactly one.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (fixture!.Server.Metrics.NTPKissesOfDeathSent == 0 && DateTime.UtcNow < deadline)
+            Thread.Sleep(10);
+
         Assert.Multiple(() => {
 
             Assert.That(kiss!.Mode,          Is.EqualTo(RawNtpMode.Server), "a server reply is mode 4");
