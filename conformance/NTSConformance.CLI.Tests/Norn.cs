@@ -15,7 +15,9 @@ namespace NTSConformance.CLI.Tests;
 public sealed record NornRun(Int32 ExitCode, String StdOut, String StdErr)
 {
 
-    /// <summary>Both streams together, for a failure message that shows everything.</summary>
+    /// <summary>
+    /// Both streams together, for a failure message that shows everything.
+    /// </summary>
     public String Transcript
 
         => $"exit {ExitCode}\n--- stdout ---\n{StdOut}\n--- stderr ---\n{StdErr}";
@@ -46,7 +48,9 @@ public static class Norn
     private static readonly Lazy<String> executable = new (Locate);
 
 
-    /// <summary>The path to the built tool.</summary>
+    /// <summary>
+    /// The path to the built tool.
+    /// </summary>
     public static String Executable
         => executable.Value;
 
@@ -228,7 +232,9 @@ public sealed class NornProcess : IDisposable
            });
 
 
-    /// <summary>Whether it is still running.</summary>
+    /// <summary>
+    /// Whether it is still running.
+    /// </summary>
     public Boolean IsRunning
         => !process.HasExited;
 
@@ -265,7 +271,9 @@ public sealed class NornProcess : IDisposable
     }
 
 
-    /// <summary>Everything both streams have produced so far.</summary>
+    /// <summary>
+    /// Everything both streams have produced so far.
+    /// </summary>
     public String Snapshot
     {
         get
@@ -276,7 +284,9 @@ public sealed class NornProcess : IDisposable
     }
 
 
-    /// <summary>Everything printed so far, for a failure message.</summary>
+    /// <summary>
+    /// Everything printed so far, for a failure message.
+    /// </summary>
     public String Transcript
         => Snapshot;
 

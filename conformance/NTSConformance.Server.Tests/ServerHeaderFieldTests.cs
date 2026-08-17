@@ -55,7 +55,9 @@ public class ServerHeaderFieldTests
     }
 
 
-    /// <summary>The fields the server does set correctly, as a regression guard.</summary>
+    /// <summary>
+    /// The fields the server does set correctly, as a regression guard.
+    /// </summary>
     [Test]
     public void ModeStratumAndTimestamps_AreSet()
     {

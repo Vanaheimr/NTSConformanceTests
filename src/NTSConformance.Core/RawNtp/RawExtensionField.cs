@@ -12,7 +12,9 @@ public static class RawExtensionFieldTypes
     public const UInt16 NTSCookiePlaceholder         = 0x0304;
     public const UInt16 NTSAuthenticatorAndEncrypted = 0x0404;
 
-    /// <summary>Norn vendor extensions — not IANA registered, exercised only to confirm they stay opt-in.</summary>
+    /// <summary>
+    /// Norn vendor extensions — not IANA registered, exercised only to confirm they stay opt-in.
+    /// </summary>
     public const UInt16 NornRequestSignedResponse    = 0xFF00;
     public const UInt16 NornSignedResponseAnnounce   = 0xFF01;
     public const UInt16 NornSignedResponse           = 0xFF02;
@@ -61,11 +63,15 @@ public static class RawExtensionFieldTypes
 public sealed record RawExtensionField(UInt16 FieldType, Byte[] Value)
 {
 
-    /// <summary>The number of octets a conformant encoder would put in the Length field.</summary>
+    /// <summary>
+    /// The number of octets a conformant encoder would put in the Length field.
+    /// </summary>
     public UInt16 ConformantLength
         => (UInt16) (4 + PaddedValueLength);
 
-    /// <summary>Value length rounded up to a four-octet boundary.</summary>
+    /// <summary>
+    /// Value length rounded up to a four-octet boundary.
+    /// </summary>
     public Int32 PaddedValueLength
         => (Value.Length + 3) & ~3;
 
@@ -83,7 +89,9 @@ public sealed record RawExtensionField(UInt16 FieldType, Byte[] Value)
     public Boolean SuppressPadding { get; init; }
 
 
-    /// <summary>A conformant field with the given type and value.</summary>
+    /// <summary>
+    /// A conformant field with the given type and value.
+    /// </summary>
     public static RawExtensionField Create(UInt16 fieldType, Byte[] value)
         => new (fieldType, value);
 

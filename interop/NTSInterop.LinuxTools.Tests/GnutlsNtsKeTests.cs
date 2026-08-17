@@ -43,7 +43,9 @@ public class GnutlsNtsKeTests
     }
 
 
-    /// <summary>The Windows host as WSL sees it, or an Assert.Ignore if that cannot be worked out.</summary>
+    /// <summary>
+    /// The Windows host as WSL sees it, or an Assert.Ignore if that cannot be worked out.
+    /// </summary>
     private static String HostAddress()
     {
 

@@ -2,7 +2,9 @@ using System.Text;
 
 namespace NTSConformance.Core.RawNtp;
 
-/// <summary>NTP association modes, RFC 5905 §7.3.</summary>
+/// <summary>
+/// NTP association modes, RFC 5905 §7.3.
+/// </summary>
 public static class RawNtpMode
 {
     public const Byte Reserved          = 0;
@@ -16,7 +18,9 @@ public static class RawNtpMode
 }
 
 
-/// <summary>Leap indicator values, RFC 5905 §7.3.</summary>
+/// <summary>
+/// Leap indicator values, RFC 5905 §7.3.
+/// </summary>
 public static class RawNtpLeapIndicator
 {
     public const Byte NoWarning       = 0;
@@ -37,7 +41,9 @@ public static class RawNtpLeapIndicator
 public sealed class RawNtpPacket
 {
 
-    /// <summary>The fixed NTP header is always 48 octets.</summary>
+    /// <summary>
+    /// The fixed NTP header is always 48 octets.
+    /// </summary>
     public const Int32 HeaderLength = 48;
 
 
@@ -48,13 +54,19 @@ public sealed class RawNtpPacket
     public Byte    Poll                { get; set; }
     public SByte   Precision           { get; set; }
 
-    /// <summary>Root delay, 16.16 fixed point seconds.</summary>
+    /// <summary>
+    /// Root delay, 16.16 fixed point seconds.
+    /// </summary>
     public UInt32  RootDelay           { get; set; }
 
-    /// <summary>Root dispersion, 16.16 fixed point seconds.</summary>
+    /// <summary>
+    /// Root dispersion, 16.16 fixed point seconds.
+    /// </summary>
     public UInt32  RootDispersion      { get; set; }
 
-    /// <summary>Four octets: an IPv4 address at stratum 2+, or ASCII at stratum 0/1.</summary>
+    /// <summary>
+    /// Four octets: an IPv4 address at stratum 2+, or ASCII at stratum 0/1.
+    /// </summary>
     public Byte[]  ReferenceIdentifier { get; set; } = new Byte[4];
 
     public UInt64  ReferenceTimestamp  { get; set; }
@@ -74,7 +86,9 @@ public sealed class RawNtpPacket
 
     #region Convenience accessors
 
-    /// <summary>True when this is a Kiss-o'-Death packet (RFC 5905 §7.4: stratum 0).</summary>
+    /// <summary>
+    /// True when this is a Kiss-o'-Death packet (RFC 5905 §7.4: stratum 0).
+    /// </summary>
     public Boolean IsKissOfDeath
         => Stratum == 0;
 
@@ -96,14 +110,18 @@ public sealed class RawNtpPacket
         => ExtensionFields.Count(field => field.FieldType == fieldType);
 
 
-    /// <summary>The Unique Identifier value (RFC 8915 §5.3), or null when absent.</summary>
+    /// <summary>
+    /// The Unique Identifier value (RFC 8915 §5.3), or null when absent.
+    /// </summary>
     public Byte[]? UniqueIdentifier
         => FirstFieldOfType(RawExtensionFieldTypes.UniqueIdentifier)?.Value;
 
     #endregion
 
 
-    /// <summary>Set the reference identifier from a four-character kiss code or refid string.</summary>
+    /// <summary>
+    /// Set the reference identifier from a four-character kiss code or refid string.
+    /// </summary>
     public RawNtpPacket WithReferenceIdentifier(String ascii)
     {
 

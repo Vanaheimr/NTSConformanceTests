@@ -43,11 +43,15 @@ public class ClockDisplacementTests
     /// </summary>
     private static readonly TimeSpan tolerance = TimeSpan.FromMilliseconds(250);
 
-    /// <summary>Loopback plus AEAD work; nowhere near a displacement even at the low end.</summary>
+    /// <summary>
+    /// Loopback plus AEAD work; nowhere near a displacement even at the low end.
+    /// </summary>
     private static readonly TimeSpan maxPlausibleDelay = TimeSpan.FromSeconds(2);
 
 
-    /// <summary>What one exchange between two displaced clocks yielded.</summary>
+    /// <summary>
+    /// What one exchange between two displaced clocks yielded.
+    /// </summary>
     /// <param name="Offset">θ, computed here from the four wire timestamps.</param>
     /// <param name="Delay">δ, likewise.</param>
     /// <param name="NornOffset">Norn's own θ, for comparison.</param>

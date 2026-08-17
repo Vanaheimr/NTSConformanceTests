@@ -96,7 +96,9 @@ public class NtsKeRecordFramingTests
     }
 
 
-    /// <summary>An empty body is legal, and End of Message always has one.</summary>
+    /// <summary>
+    /// An empty body is legal, and End of Message always has one.
+    /// </summary>
     [Test]
     public void EndOfMessage_IsCriticalWithAnEmptyBody()
     {
@@ -169,7 +171,9 @@ public class NtsKeRecordFramingTests
     }
 
 
-    /// <summary>The IANA AEAD registry ids Norn enumerates must match their assigned numbers.</summary>
+    /// <summary>
+    /// The IANA AEAD registry ids Norn enumerates must match their assigned numbers.
+    /// </summary>
     [TestCase(AEADAlgorithms.AES_SIV_CMAC_256,   (UInt16) 15)]
     [TestCase(AEADAlgorithms.AES_SIV_CMAC_384,   (UInt16) 16)]
     [TestCase(AEADAlgorithms.AES_SIV_CMAC_512,   (UInt16) 17)]

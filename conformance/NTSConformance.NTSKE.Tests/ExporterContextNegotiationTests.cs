@@ -386,7 +386,9 @@ public class ExporterContextNegotiationTests
     }
 
 
-    /// <summary>The algorithm id in the response's AEAD Algorithm Negotiation record.</summary>
+    /// <summary>
+    /// The algorithm id in the response's AEAD Algorithm Negotiation record.
+    /// </summary>
     private static Int32? NegotiatedAlgorithm(RawNtsKeExchange Exchange)
     {
 

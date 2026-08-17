@@ -48,7 +48,9 @@ public sealed class PortReservation : IDisposable
 public static class FreePort
 {
 
-    /// <summary>Reserve a free TCP port, holding it until the reservation is disposed.</summary>
+    /// <summary>
+    /// Reserve a free TCP port, holding it until the reservation is disposed.
+    /// </summary>
     public static PortReservation ReserveTcp()
     {
 
@@ -61,7 +63,9 @@ public static class FreePort
     }
 
 
-    /// <summary>Reserve a free UDP port, holding it until the reservation is disposed.</summary>
+    /// <summary>
+    /// Reserve a free UDP port, holding it until the reservation is disposed.
+    /// </summary>
     public static PortReservation ReserveUdp()
     {
 

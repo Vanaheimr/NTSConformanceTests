@@ -28,13 +28,17 @@ public sealed class ChronyNtsServerFixture : IAsyncDisposable
     }
 
 
-    /// <summary>The WSL VM's address, reachable from Windows for both TCP and UDP.</summary>
+    /// <summary>
+    /// The WSL VM's address, reachable from Windows for both TCP and UDP.
+    /// </summary>
     public String VmAddress       { get; }
 
     public IPPort NTPPort         { get; }
     public IPPort NTSKEPort       { get; }
 
-    /// <summary>Path, inside WSL, of the PEM certificate chronyd presents.</summary>
+    /// <summary>
+    /// Path, inside WSL, of the PEM certificate chronyd presents.
+    /// </summary>
     public String CertificatePath { get; }
 
 
@@ -118,7 +122,9 @@ public sealed class ChronyNtsServerFixture : IAsyncDisposable
     }
 
 
-    /// <summary>chronyd's own view of its NTS server state — useful in failure messages.</summary>
+    /// <summary>
+    /// chronyd's own view of its NTS server state — useful in failure messages.
+    /// </summary>
     public String ServerStats()
         => Wsl.Run($"chronyc -h {VmAddress} -p {NTPPort} serverstats 2>&1 || true",
                    TimeSpan.FromSeconds(15)).StdOut;

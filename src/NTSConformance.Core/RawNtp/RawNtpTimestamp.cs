@@ -11,7 +11,9 @@ namespace NTSConformance.Core.RawNtp;
 public static class RawNtpTimestamp
 {
 
-    /// <summary>The NTP prime epoch — start of era 0.</summary>
+    /// <summary>
+    /// The NTP prime epoch — start of era 0.
+    /// </summary>
     public static readonly DateTime Epoch = new (1900, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     /// <summary>
@@ -20,11 +22,15 @@ public static class RawNtpTimestamp
     /// </summary>
     public static readonly DateTime EraRollover = Epoch.AddSeconds(4294967296.0);
 
-    /// <summary>Seconds per era (2^32).</summary>
+    /// <summary>
+    /// Seconds per era (2^32).
+    /// </summary>
     public const Int64 SecondsPerEra = 4294967296L;
 
 
-    /// <summary>Convert a UTC instant to a 64-bit NTP timestamp within the given era.</summary>
+    /// <summary>
+    /// Convert a UTC instant to a 64-bit NTP timestamp within the given era.
+    /// </summary>
     public static UInt64 FromDateTime(DateTime utc, Int32 era = 0)
     {
 
@@ -79,11 +85,15 @@ public static class RawNtpTimestamp
     }
 
 
-    /// <summary>The 32-bit seconds half.</summary>
+    /// <summary>
+    /// The 32-bit seconds half.
+    /// </summary>
     public static UInt32 Seconds(UInt64 timestamp)
         => (UInt32) (timestamp >> 32);
 
-    /// <summary>The 32-bit binary-fraction half.</summary>
+    /// <summary>
+    /// The 32-bit binary-fraction half.
+    /// </summary>
     public static UInt32 Fraction(UInt64 timestamp)
         => (UInt32) timestamp;
 
@@ -95,7 +105,9 @@ public static class RawNtpTimestamp
     public static Double ShortToSeconds(UInt32 shortFormat)
         => shortFormat / 65536.0;
 
-    /// <summary>Seconds to the 16.16 fixed-point short format.</summary>
+    /// <summary>
+    /// Seconds to the 16.16 fixed-point short format.
+    /// </summary>
     public static UInt32 SecondsToShort(Double seconds)
         => (UInt32) Math.Round(seconds * 65536.0);
 

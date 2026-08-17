@@ -22,7 +22,9 @@ namespace NTSConformance.Core;
 public sealed class UdpRelayProbe : IDisposable
 {
 
-    /// <summary>One datagram, and who sent it.</summary>
+    /// <summary>
+    /// One datagram, and who sent it.
+    /// </summary>
     public readonly record struct Observation(IPEndPoint Source, Byte[] Payload);
 
 
@@ -47,11 +49,15 @@ public sealed class UdpRelayProbe : IDisposable
     }
 
 
-    /// <summary>The loopback port this probe is listening on.</summary>
+    /// <summary>
+    /// The loopback port this probe is listening on.
+    /// </summary>
     public IPPort Port { get; }
 
 
-    /// <summary>Everything received so far, oldest first.</summary>
+    /// <summary>
+    /// Everything received so far, oldest first.
+    /// </summary>
     public IReadOnlyList<Observation> Observations
     {
         get
@@ -62,7 +68,9 @@ public sealed class UdpRelayProbe : IDisposable
     }
 
 
-    /// <summary>The distinct source ports datagrams arrived from, in order of first appearance.</summary>
+    /// <summary>
+    /// The distinct source ports datagrams arrived from, in order of first appearance.
+    /// </summary>
     public IReadOnlyList<UInt16> SourcePorts
 
         => [.. Observations.Select(observation => (UInt16) observation.Source.Port).Distinct()];

@@ -13,7 +13,9 @@ namespace NTSConformance.Core.RawNtp;
 public static class RawNtpExchange
 {
 
-    /// <summary>Send a packet and read the reply.</summary>
+    /// <summary>
+    /// Send a packet and read the reply.
+    /// </summary>
     /// <param name="request">The packet to send, malformed or not.</param>
     /// <param name="host">The server's address — a literal, so no name resolution is involved.</param>
     /// <param name="port">The server's UDP port.</param>

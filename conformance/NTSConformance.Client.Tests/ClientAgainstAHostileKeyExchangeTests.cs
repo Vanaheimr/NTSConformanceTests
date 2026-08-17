@@ -34,12 +34,16 @@ public class ClientAgainstAHostileKeyExchangeTests
 
     #region (private) helpers
 
-    /// <summary>A server that always answers with the given records, whatever it was asked.</summary>
+    /// <summary>
+    /// A server that always answers with the given records, whatever it was asked.
+    /// </summary>
     private static Func<CapturedNtsKeRequest, Byte[]?> Reply(params RawNtsKeRecord[] Records)
         => _ => RawNtsKeCodec.Encode(Records);
 
 
-    /// <summary>The records of a reply that is correct, so a test can spoil exactly one thing.</summary>
+    /// <summary>
+    /// The records of a reply that is correct, so a test can spoil exactly one thing.
+    /// </summary>
     private static RawNtsKeRecord[] AGoodReply()
         => [
                RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv4),
@@ -111,7 +115,9 @@ public class ClientAgainstAHostileKeyExchangeTests
 
     #region Error and Warning records (§ 4.1.3, § 4.1.4)
 
-    /// <summary>An Error record ends the exchange, and its code reaches the caller.</summary>
+    /// <summary>
+    /// An Error record ends the exchange, and its code reaches the caller.
+    /// </summary>
     /// <remarks>
     /// § 4.1.3 defines three codes and makes the body two octets rather than text. The code is
     /// the only thing that distinguishes "you sent me something I could not parse" from "I broke,
@@ -133,7 +139,9 @@ public class ClientAgainstAHostileKeyExchangeTests
     }
 
 
-    /// <summary>A Warning record ends it too, because no warning code has ever been registered.</summary>
+    /// <summary>
+    /// A Warning record ends it too, because no warning code has ever been registered.
+    /// </summary>
     /// <remarks>
     /// § 4.1.4: "Unrecognized warning codes MUST be treated as errors", and IANA has assigned
     /// none — so every warning a conformant client can receive is unrecognized. Failing closed is
@@ -152,7 +160,9 @@ public class ClientAgainstAHostileKeyExchangeTests
     }
 
 
-    /// <summary>Both at once are reported as the error, which is the one carrying a defined code.</summary>
+    /// <summary>
+    /// Both at once are reported as the error, which is the one carrying a defined code.
+    /// </summary>
     [Test]
     public async Task AnErrorAndAWarning_AreReportedAsTheError()
     {
@@ -211,7 +221,9 @@ public class ClientAgainstAHostileKeyExchangeTests
 
     #region Next protocol negotiation (§ 4.1.2)
 
-    /// <summary>A reply with no Next Protocol record at all.</summary>
+    /// <summary>
+    /// A reply with no Next Protocol record at all.
+    /// </summary>
     [Test]
     public async Task NoNextProtocolRecord_IsRefused()
     {
@@ -226,7 +238,9 @@ public class ClientAgainstAHostileKeyExchangeTests
     }
 
 
-    /// <summary>A reply naming a protocol that is not NTPv4.</summary>
+    /// <summary>
+    /// A reply naming a protocol that is not NTPv4.
+    /// </summary>
     /// <remarks>
     /// The only protocol id registered is 0. A client that accepted any other would be taking
     /// cookies for a protocol it cannot speak, and § 4.1.2 requires the response to be a subset
@@ -250,7 +264,9 @@ public class ClientAgainstAHostileKeyExchangeTests
 
     #region AEAD algorithm negotiation (§ 4.1.5)
 
-    /// <summary>A reply with no AEAD Algorithm record.</summary>
+    /// <summary>
+    /// A reply with no AEAD Algorithm record.
+    /// </summary>
     [Test]
     public async Task NoAeadRecord_IsRefused()
     {
@@ -265,7 +281,9 @@ public class ClientAgainstAHostileKeyExchangeTests
     }
 
 
-    /// <summary>A reply naming an algorithm this client cannot perform.</summary>
+    /// <summary>
+    /// A reply naming an algorithm this client cannot perform.
+    /// </summary>
     /// <remarks>
     /// Algorithm 1 is AEAD_AES_128_GCM, registered with IANA and not implemented here. Accepting
     /// it would produce a session that authenticates nothing, discovered one packet later.
@@ -285,7 +303,9 @@ public class ClientAgainstAHostileKeyExchangeTests
     }
 
 
-    /// <summary>A reply naming two algorithms.</summary>
+    /// <summary>
+    /// A reply naming two algorithms.
+    /// </summary>
     /// <remarks>
     /// § 4.1.5: the response body "MUST include at most one algorithm number". Two is not a
     /// choice offered back to the client — it is a reply the client cannot act on, because
@@ -305,7 +325,9 @@ public class ClientAgainstAHostileKeyExchangeTests
 
     }
 
-    /// <summary>A reply naming an algorithm this client can perform but never offered.</summary>
+    /// <summary>
+    /// A reply naming an algorithm this client can perform but never offered.
+    /// </summary>
     /// <remarks>
     /// <para>
     /// § 4.1.5 lets a server "select among any of the client's offered choices, even if they are
@@ -373,7 +395,9 @@ public class ClientAgainstAHostileKeyExchangeTests
 
     #region Cookies (§ 4.1.6)
 
-    /// <summary>A reply with no cookie.</summary>
+    /// <summary>
+    /// A reply with no cookie.
+    /// </summary>
     /// <remarks>
     /// A key exchange that agrees everything and hands over no cookie has achieved nothing: the
     /// client cannot make a single request. Better refused here than discovered at query time.
@@ -392,7 +416,9 @@ public class ClientAgainstAHostileKeyExchangeTests
     }
 
 
-    /// <summary>A reply with a cookie of zero length.</summary>
+    /// <summary>
+    /// A reply with a cookie of zero length.
+    /// </summary>
     [Test]
     public async Task AnEmptyCookie_IsRefused()
     {
@@ -411,7 +437,9 @@ public class ClientAgainstAHostileKeyExchangeTests
 
     #region Things that are not records at all
 
-    /// <summary>A server that completes the handshake and then hangs up.</summary>
+    /// <summary>
+    /// A server that completes the handshake and then hangs up.
+    /// </summary>
     /// <remarks>
     /// The shape of a server that decided the request was bad and could not be bothered to say
     /// so — which is what Norn's own server used to do before it learned to send Error records.
@@ -436,7 +464,9 @@ public class ClientAgainstAHostileKeyExchangeTests
     }
 
 
-    /// <summary>A record whose declared body length runs off the end of the message.</summary>
+    /// <summary>
+    /// A record whose declared body length runs off the end of the message.
+    /// </summary>
     /// <remarks>
     /// The classic framing attack, and the one that decides whether a parser reads past its
     /// buffer. It has to be refused as a malformed message rather than by throwing — a parse
@@ -465,7 +495,9 @@ public class ClientAgainstAHostileKeyExchangeTests
     }
 
 
-    /// <summary>A reply that never ends.</summary>
+    /// <summary>
+    /// A reply that never ends.
+    /// </summary>
     /// <remarks>
     /// § 4.1.1 makes End of Message how a peer knows the message is complete. Without it there is
     /// no point at which the reply can be acted on, and a client that guessed would be acting on

@@ -215,7 +215,9 @@ public class InterleavedNonceTests
     }
 
 
-    /// <summary>The unsigned distance between two NTP timestamps, wrapping at the era boundary.</summary>
+    /// <summary>
+    /// The unsigned distance between two NTP timestamps, wrapping at the era boundary.
+    /// </summary>
     private static UInt64 Distance(UInt64 A, UInt64 B)
     {
         var difference = unchecked(A - B);

@@ -40,11 +40,15 @@ public sealed class NornServerFixture : IAsyncDisposable
     public IPPort    NTPPort   { get; }
 
 
-    /// <summary>The certificate the NTS-KE endpoint presents, when one was injected.</summary>
+    /// <summary>
+    /// The certificate the NTS-KE endpoint presents, when one was injected.
+    /// </summary>
     public TestCertificate? Certificate { get; private init; }
 
 
-    /// <summary>Start a server on free ports.</summary>
+    /// <summary>
+    /// Start a server on free ports.
+    /// </summary>
     /// <param name="masterKeyLifetime">Shorten to exercise rotation.</param>
     /// <param name="masterKeyRotationGracePeriod">How long superseded keys stay acceptable.</param>
     /// <param name="certificate">
@@ -187,7 +191,9 @@ public sealed class NornServerFixture : IAsyncDisposable
                 TimeProvider:                timeProvider);
 
 
-    /// <summary>The measured system clock resolution, for diagnostics.</summary>
+    /// <summary>
+    /// The measured system clock resolution, for diagnostics.
+    /// </summary>
     public static String DescribeClockResolution()
         => $"{NTSServer.SystemClockResolution.TotalMilliseconds:F4} ms";
 

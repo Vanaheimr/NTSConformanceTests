@@ -41,7 +41,9 @@ public class TimestampTests
     }
 
 
-    /// <summary>Norn and the reference must agree on the conversion, to within the format's precision.</summary>
+    /// <summary>
+    /// Norn and the reference must agree on the conversion, to within the format's precision.
+    /// </summary>
     [Test]
     public void NornAgreesWithReference_WithinEra0()
     {
@@ -99,7 +101,9 @@ public class TimestampTests
     }
 
 
-    /// <summary>Converting to a timestamp and back must be lossless at 100 ns granularity.</summary>
+    /// <summary>
+    /// Converting to a timestamp and back must be lossless at 100 ns granularity.
+    /// </summary>
     [Test]
     public void ReferenceRoundTrip_IsLossless()
     {

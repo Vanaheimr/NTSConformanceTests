@@ -39,7 +39,9 @@ public class PlainNtpServerTests
     }
 
 
-    /// <summary>Send raw octets and read the reply, with no Norn code on the client side.</summary>
+    /// <summary>
+    /// Send raw octets and read the reply, with no Norn code on the client side.
+    /// </summary>
     private RawNtpPacket Exchange(RawNtpPacket request)
     {
 

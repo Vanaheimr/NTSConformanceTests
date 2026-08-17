@@ -1,6 +1,8 @@
 namespace NTSConformance.Core.RawNtsKe;
 
-/// <summary>NTS-KE record types, RFC 8915 §4.1.</summary>
+/// <summary>
+/// NTS-KE record types, RFC 8915 §4.1.
+/// </summary>
 public static class RawNtsKeRecordTypes
 {
 
@@ -38,23 +40,33 @@ public static class RawNtsKeRecordTypes
 }
 
 
-/// <summary>NTS-KE error codes, RFC 8915 §4.1.3.</summary>
+/// <summary>
+/// NTS-KE error codes, RFC 8915 §4.1.3.
+/// </summary>
 public static class RawNtsKeErrorCodes
 {
 
-    /// <summary>The request contained a record the server did not understand with its critical bit set.</summary>
+    /// <summary>
+    /// The request contained a record the server did not understand with its critical bit set.
+    /// </summary>
     public const UInt16 UnrecognizedCriticalRecord  = 0;
 
-    /// <summary>The request was not complete and syntactically well-formed.</summary>
+    /// <summary>
+    /// The request was not complete and syntactically well-formed.
+    /// </summary>
     public const UInt16 BadRequest                  = 1;
 
-    /// <summary>The server could not respond due to an internal condition; the client may retry.</summary>
+    /// <summary>
+    /// The server could not respond due to an internal condition; the client may retry.
+    /// </summary>
     public const UInt16 InternalServerError         = 2;
 
 }
 
 
-/// <summary>Next-protocol identifiers, RFC 8915 §4.1.2.</summary>
+/// <summary>
+/// Next-protocol identifiers, RFC 8915 §4.1.2.
+/// </summary>
 public static class RawNtsKeNextProtocols
 {
     public const UInt16 Ntpv4 = 0;
@@ -81,7 +93,9 @@ public static class RawNtsKeNextProtocols
 public sealed record RawNtsKeRecord(Boolean IsCritical, UInt16 RecordType, Byte[] Body)
 {
 
-    /// <summary>Emit a body length other than the real one, for negative tests.</summary>
+    /// <summary>
+    /// Emit a body length other than the real one, for negative tests.
+    /// </summary>
     public UInt16? LengthOverride { get; init; }
 
 
@@ -111,23 +125,33 @@ public sealed record RawNtsKeRecord(Boolean IsCritical, UInt16 RecordType, Byte[
 
     #region Factories
 
-    /// <summary>RFC 8915 §4.1.1: End of Message. Critical bit set, empty body, always last.</summary>
+    /// <summary>
+    /// RFC 8915 §4.1.1: End of Message. Critical bit set, empty body, always last.
+    /// </summary>
     public static RawNtsKeRecord EndOfMessage()
         => new (true, RawNtsKeRecordTypes.EndOfMessage, []);
 
-    /// <summary>RFC 8915 §4.1.2: the protocols the client supports, most preferred first.</summary>
+    /// <summary>
+    /// RFC 8915 §4.1.2: the protocols the client supports, most preferred first.
+    /// </summary>
     public static RawNtsKeRecord NextProtocolNegotiation(params UInt16[] protocolIds)
         => new (true, RawNtsKeRecordTypes.NextProtocolNegotiation, UInt16Body(protocolIds));
 
-    /// <summary>RFC 8915 §4.1.5: the AEAD algorithms the client supports, most preferred first.</summary>
+    /// <summary>
+    /// RFC 8915 §4.1.5: the AEAD algorithms the client supports, most preferred first.
+    /// </summary>
     public static RawNtsKeRecord AeadAlgorithmNegotiation(params UInt16[] algorithmIds)
         => new (false, RawNtsKeRecordTypes.AeadAlgorithmNegotiation, UInt16Body(algorithmIds));
 
-    /// <summary>RFC 8915 §4.1.3: an error code. Critical bit set.</summary>
+    /// <summary>
+    /// RFC 8915 §4.1.3: an error code. Critical bit set.
+    /// </summary>
     public static RawNtsKeRecord Error(UInt16 errorCode)
         => new (true, RawNtsKeRecordTypes.Error, UInt16Body(errorCode));
 
-    /// <summary>RFC 8915 §4.1.4: a warning code. Critical bit set.</summary>
+    /// <summary>
+    /// RFC 8915 §4.1.4: a warning code. Critical bit set.
+    /// </summary>
     public static RawNtsKeRecord Warning(UInt16 warningCode)
         => new (true, RawNtsKeRecordTypes.Warning, UInt16Body(warningCode));
 
@@ -163,7 +187,9 @@ public sealed record RawNtsKeRecord(Boolean IsCritical, UInt16 RecordType, Byte[
 }
 
 
-/// <summary>Encodes and decodes NTS-KE record streams independently of Norn.</summary>
+/// <summary>
+/// Encodes and decodes NTS-KE record streams independently of Norn.
+/// </summary>
 public static class RawNtsKeCodec
 {
 
@@ -236,7 +262,9 @@ public static class RawNtsKeCodec
     }
 
 
-    /// <summary>Read a body of 16-bit big-endian values, as the negotiation records carry.</summary>
+    /// <summary>
+    /// Read a body of 16-bit big-endian values, as the negotiation records carry.
+    /// </summary>
     public static UInt16[] ReadUInt16Body(RawNtsKeRecord record)
     {
 

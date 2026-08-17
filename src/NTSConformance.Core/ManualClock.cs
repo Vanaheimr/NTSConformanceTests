@@ -47,7 +47,9 @@ public sealed class ManualClock : TimeProvider
         => TimeSpan.TicksPerSecond;
 
 
-    /// <summary>Move both clocks forward by the same amount.</summary>
+    /// <summary>
+    /// Move both clocks forward by the same amount.
+    /// </summary>
     public void Advance(TimeSpan delta)
     {
         now    += delta;

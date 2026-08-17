@@ -89,7 +89,9 @@ public class NtpHeaderTests
     }
 
 
-    /// <summary>Root Delay and Root Dispersion are 32-bit 16.16 fixed-point values.</summary>
+    /// <summary>
+    /// Root Delay and Root Dispersion are 32-bit 16.16 fixed-point values.
+    /// </summary>
     [Test]
     public void RootDelayAndDispersion_RoundTrip()
     {
@@ -118,7 +120,9 @@ public class NtpHeaderTests
     }
 
 
-    /// <summary>All four 64-bit timestamps must land in the right fields, not be transposed.</summary>
+    /// <summary>
+    /// All four 64-bit timestamps must land in the right fields, not be transposed.
+    /// </summary>
     [Test]
     public void Timestamps_AreNotTransposed()
     {

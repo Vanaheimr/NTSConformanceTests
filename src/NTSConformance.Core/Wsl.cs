@@ -160,7 +160,9 @@ public static class Wsl
     });
 
 
-    /// <summary>True when the given tool is on the PATH (or in the usual sbin locations).</summary>
+    /// <summary>
+    /// True when the given tool is on the PATH (or in the usual sbin locations).
+    /// </summary>
     public static Boolean HasTool(String tool)
     {
 
@@ -239,7 +241,9 @@ public static class Wsl
     });
 
 
-    /// <summary>True when WSL runs in mirrored-networking mode, where localhost is shared with Windows. Natively there is no WSL, so: false.</summary>
+    /// <summary>
+    /// True when WSL runs in mirrored-networking mode, where localhost is shared with Windows. Natively there is no WSL, so: false.
+    /// </summary>
     public static Boolean IsMirroredNetworking
         => mirrored.Value;
 

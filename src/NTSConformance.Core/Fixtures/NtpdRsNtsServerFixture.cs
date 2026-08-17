@@ -32,13 +32,17 @@ public sealed class NtpdRsNtsServerFixture : IAsyncDisposable
     }
 
 
-    /// <summary>The VM's address, as reachable from Windows.</summary>
+    /// <summary>
+    /// The VM's address, as reachable from Windows.
+    /// </summary>
     public String VmAddress       { get; }
 
     public IPPort NTPPort         { get; }
     public IPPort NTSKEPort       { get; }
 
-    /// <summary>The self-signed certificate ntpd-rs presents, inside the VM.</summary>
+    /// <summary>
+    /// The self-signed certificate ntpd-rs presents, inside the VM.
+    /// </summary>
     public String CertificatePath { get; }
 
 
@@ -126,7 +130,9 @@ public sealed class NtpdRsNtsServerFixture : IAsyncDisposable
     }
 
 
-    /// <summary>The daemon's own log, for when a failure needs explaining.</summary>
+    /// <summary>
+    /// The daemon's own log, for when a failure needs explaining.
+    /// </summary>
     public String DaemonLog()
 
         => Wsl.Run($"cat {WorkingDirectory}/daemon.log 2>/dev/null || true",

@@ -25,11 +25,15 @@ public class ExtensionFieldTests
 
     #region Helpers
 
-    /// <summary>A well-formed 32-octet Unique Identifier field — 36 octets on the wire.</summary>
+    /// <summary>
+    /// A well-formed 32-octet Unique Identifier field — 36 octets on the wire.
+    /// </summary>
     private static RawExtensionField WellFormedUniqueIdentifier()
         => RawNtsExtensionFields.UniqueIdentifier(Enumerable.Range(0, 32).Select(i => (Byte) i).ToArray());
 
-    /// <summary>A well-formed 100-octet cookie field — 104 octets on the wire.</summary>
+    /// <summary>
+    /// A well-formed 100-octet cookie field — 104 octets on the wire.
+    /// </summary>
     private static RawExtensionField WellFormedCookie()
         => RawNtsExtensionFields.NtsCookie(Enumerable.Range(0, 100).Select(i => (Byte) (i * 3)).ToArray());
 
@@ -50,7 +54,9 @@ public class ExtensionFieldTests
     }
 
 
-    /// <summary>Confirm the suite's own reader rejects the input, and report why.</summary>
+    /// <summary>
+    /// Confirm the suite's own reader rejects the input, and report why.
+    /// </summary>
     private static String AssertReferenceRejects(Byte[] bytes)
     {
 
@@ -67,7 +73,9 @@ public class ExtensionFieldTests
 
     #region Well-formed fields
 
-    /// <summary>A conformant single field must parse, and its value must survive intact.</summary>
+    /// <summary>
+    /// A conformant single field must parse, and its value must survive intact.
+    /// </summary>
     [Test]
     public void SingleWellFormedField_Parses()
     {
@@ -89,7 +97,9 @@ public class ExtensionFieldTests
     }
 
 
-    /// <summary>Several conformant fields must all be recovered, in order.</summary>
+    /// <summary>
+    /// Several conformant fields must all be recovered, in order.
+    /// </summary>
     [Test]
     public void MultipleWellFormedFields_AllParse()
     {

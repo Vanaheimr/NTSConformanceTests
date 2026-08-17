@@ -70,7 +70,9 @@ public class AesSivConformanceTests
     }
 
 
-    /// <summary>RFC 5297 §A.2, nonce-based mode with two associated-data components.</summary>
+    /// <summary>
+    /// RFC 5297 §A.2, nonce-based mode with two associated-data components.
+    /// </summary>
     [Test]
     public void Rfc5297_A2_Vector()
     {
@@ -82,7 +84,9 @@ public class AesSivConformanceTests
     }
 
 
-    /// <summary>RFC 4493 CMAC vectors, through Norn's BouncyCastle-backed helper.</summary>
+    /// <summary>
+    /// RFC 4493 CMAC vectors, through Norn's BouncyCastle-backed helper.
+    /// </summary>
     [TestCase( 0, "bb1d6929e95937287fa37d129b756746")]
     [TestCase(16, "070a16b46b4d4144f79bdd9dd04a287c")]
     [TestCase(40, "dfa66747de9ae63030ca32611497c827")]
@@ -150,7 +154,9 @@ public class AesSivConformanceTests
     }
 
 
-    /// <summary>Each implementation must be able to decrypt what the other produced.</summary>
+    /// <summary>
+    /// Each implementation must be able to decrypt what the other produced.
+    /// </summary>
     [Test]
     public void CrossDecrypts_WithTheReference()
     {
@@ -180,7 +186,9 @@ public class AesSivConformanceTests
 
     #region Authentication must fail closed
 
-    /// <summary>A tampered ciphertext must be rejected rather than decrypted.</summary>
+    /// <summary>
+    /// A tampered ciphertext must be rejected rather than decrypted.
+    /// </summary>
     [Test]
     public void TamperedCiphertext_IsRejected()
     {
@@ -223,7 +231,9 @@ public class AesSivConformanceTests
     }
 
 
-    /// <summary>A wrong key must not authenticate.</summary>
+    /// <summary>
+    /// A wrong key must not authenticate.
+    /// </summary>
     [Test]
     public void WrongKey_IsRejected()
     {

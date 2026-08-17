@@ -29,11 +29,15 @@ public class NtsKeServerNegotiationTests
     private NornServerFixture? fixture;
     private DebugXSink?        sink;
 
-    /// <summary>AEAD ids from the IANA registry: 15 is the one NTS mandates, 30 the one chrony prefers.</summary>
+    /// <summary>
+    /// AEAD ids from the IANA registry: 15 is the one NTS mandates, 30 the one chrony prefers.
+    /// </summary>
     private const UInt16 AeadAesSivCmac256 = 15;
     private const UInt16 AeadAes128GcmSiv  = 30;
 
-    /// <summary>AEAD_AES_128_GCM: registered with IANA, and deliberately not implemented here.</summary>
+    /// <summary>
+    /// AEAD_AES_128_GCM: registered with IANA, and deliberately not implemented here.
+    /// </summary>
     private const UInt16 AeadAes128Gcm     = 1;
 
 

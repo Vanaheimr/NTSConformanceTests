@@ -103,7 +103,9 @@ public sealed class RawAesSiv
     }
 
 
-    /// <summary>Decrypt, throwing on authentication failure.</summary>
+    /// <summary>
+    /// Decrypt, throwing on authentication failure.
+    /// </summary>
     public Byte[] Decrypt(IEnumerable<Byte[]> associatedData, Byte[]? nonce, Byte[] sivAndCiphertext)
     {
 
@@ -258,7 +260,9 @@ public sealed class RawAesSiv
 
     #region CMAC (RFC 4493)
 
-    /// <summary>AES-CMAC over an arbitrary-length message, per RFC 4493 §2.4.</summary>
+    /// <summary>
+    /// AES-CMAC over an arbitrary-length message, per RFC 4493 §2.4.
+    /// </summary>
     public static Byte[] Cmac(Byte[] key, Byte[] message)
     {
 
@@ -331,7 +335,9 @@ public sealed class RawAesSiv
 
     #region Raw AES block
 
-    /// <summary>A single raw AES block encryption — the only primitive borrowed from elsewhere.</summary>
+    /// <summary>
+    /// A single raw AES block encryption — the only primitive borrowed from elsewhere.
+    /// </summary>
     public static Byte[] AesEncryptBlock(Byte[] key, Byte[] block)
     {
 

@@ -28,11 +28,15 @@ public sealed record CapturedNtsKeRequest(List<RawNtsKeRecord>?  Records,
     public RawNtsKeRecord? FirstRecordOfType(UInt16 RecordType)
         => Records?.FirstOrDefault(record => record.RecordType == RecordType);
 
-    /// <summary>Whether a record of the given type is present at all.</summary>
+    /// <summary>
+    /// Whether a record of the given type is present at all.
+    /// </summary>
     public Boolean Contains(UInt16 RecordType)
         => Records?.Any(record => record.RecordType == RecordType) == true;
 
-    /// <summary>The 16-bit values in a record's body, for the two list-valued record types.</summary>
+    /// <summary>
+    /// The 16-bit values in a record's body, for the two list-valued record types.
+    /// </summary>
     public UInt16[] UInt16Body(UInt16 RecordType)
     {
 
@@ -98,7 +102,9 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
 
     #region Data
 
-    /// <summary>The ALPN protocol RFC 8915 § 4 assigns to NTS-KE.</summary>
+    /// <summary>
+    /// The ALPN protocol RFC 8915 § 4 assigns to NTS-KE.
+    /// </summary>
     public static readonly SslApplicationProtocol NtsKeAlpn = new ("ntske/1");
 
     private readonly TcpListener                                            listener;
@@ -117,10 +123,14 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
 
     #region Properties
 
-    /// <summary>The port it actually bound, on the loopback address.</summary>
+    /// <summary>
+    /// The port it actually bound, on the loopback address.
+    /// </summary>
     public IPPort Port { get; }
 
-    /// <summary>Every request received, in order.</summary>
+    /// <summary>
+    /// Every request received, in order.
+    /// </summary>
     public IReadOnlyList<CapturedNtsKeRequest> Requests
     {
         get
@@ -130,7 +140,9 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
         }
     }
 
-    /// <summary>The most recent request, or null when none has arrived.</summary>
+    /// <summary>
+    /// The most recent request, or null when none has arrived.
+    /// </summary>
     public CapturedNtsKeRequest? LastRequest
     {
         get
@@ -412,7 +424,9 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
     }
 
 
-    /// <summary>Whether a complete NTS-KE message has arrived, i.e. an End of Message record.</summary>
+    /// <summary>
+    /// Whether a complete NTS-KE message has arrived, i.e. an End of Message record.
+    /// </summary>
     private static Boolean ContainsEndOfMessage(Byte[] Buffer)
     {
 

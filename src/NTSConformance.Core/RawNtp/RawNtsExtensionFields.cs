@@ -9,10 +9,14 @@ namespace NTSConformance.Core.RawNtp;
 public static class RawNtsExtensionFields
 {
 
-    /// <summary>RFC 8915 §5.3 recommends 32 octets of Unique Identifier.</summary>
+    /// <summary>
+    /// RFC 8915 §5.3 recommends 32 octets of Unique Identifier.
+    /// </summary>
     public const Int32 DefaultUniqueIdentifierLength = 32;
 
-    /// <summary>RFC 8915 §5.6 nonces are 16 octets for AES-SIV-CMAC-256.</summary>
+    /// <summary>
+    /// RFC 8915 §5.6 nonces are 16 octets for AES-SIV-CMAC-256.
+    /// </summary>
     public const Int32 DefaultNonceLength = 16;
 
 
@@ -70,7 +74,9 @@ public static class RawNtsExtensionFields
     }
 
 
-    /// <summary>Split an authenticator field's value back into nonce and ciphertext.</summary>
+    /// <summary>
+    /// Split an authenticator field's value back into nonce and ciphertext.
+    /// </summary>
     public static Boolean TryParseAuthenticatorValue(Byte[]       value,
                                                      out Byte[]?  nonce,
                                                      out Byte[]?  ciphertext,
@@ -136,7 +142,9 @@ public static class RawNtsExtensionFields
     }
 
 
-    /// <summary>Encode a single extension field exactly as the writer would.</summary>
+    /// <summary>
+    /// Encode a single extension field exactly as the writer would.
+    /// </summary>
     public static Byte[] EncodeField(RawExtensionField field)
     {
 

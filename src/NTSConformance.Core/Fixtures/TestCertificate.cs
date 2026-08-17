@@ -30,7 +30,9 @@ public sealed record TestCertificate(X509Certificate         Certificate,
                                      ECPrivateKeyParameters  PrivateKey)
 {
 
-    /// <summary>Generate a self-signed certificate.</summary>
+    /// <summary>
+    /// Generate a self-signed certificate.
+    /// </summary>
     /// <param name="subjectCommonName">The CN to place in the subject and issuer.</param>
     /// <param name="subjectAlternativeNames">DNS names to place in the SAN extension.</param>
     /// <param name="notBefore">Validity start; defaults to one day ago.</param>
@@ -156,7 +158,9 @@ public sealed record TestCertificate(X509Certificate         Certificate,
     }
 
 
-    /// <summary>The certificate as PEM, for tools that read a trust file (chrony's ntstrustedcerts).</summary>
+    /// <summary>
+    /// The certificate as PEM, for tools that read a trust file (chrony's ntstrustedcerts).
+    /// </summary>
     public String ToPem()
     {
 
@@ -176,7 +180,9 @@ public sealed record TestCertificate(X509Certificate         Certificate,
     }
 
 
-    /// <summary>Write the certificate to a PEM file and return its path.</summary>
+    /// <summary>
+    /// Write the certificate to a PEM file and return its path.
+    /// </summary>
     public String WritePem(String directory, String fileName = "nts-ke.pem")
     {
 

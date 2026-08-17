@@ -35,7 +35,9 @@ public class CookieConfidentialityTests
                 NotAfter:   DateTimeOffset.UtcNow.AddDays(1));
 
 
-    /// <summary>Session keys with recognisable, non-random content so they are easy to spot on the wire.</summary>
+    /// <summary>
+    /// Session keys with recognisable, non-random content so they are easy to spot on the wire.
+    /// </summary>
     private static readonly Byte[] C2SKey = Enumerable.Repeat((Byte) 0xC2, 32).ToArray();
     private static readonly Byte[] S2CKey = Enumerable.Repeat((Byte) 0x5C, 32).ToArray();
 

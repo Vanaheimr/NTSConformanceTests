@@ -25,16 +25,22 @@ public sealed class DebugXSink : IDisposable
     }
 
 
-    /// <summary>Everything captured since construction, one entry per write.</summary>
+    /// <summary>
+    /// Everything captured since construction, one entry per write.
+    /// </summary>
     public IReadOnlyList<String> Entries
         => listener.Entries;
 
-    /// <summary>All captured output as a single string.</summary>
+    /// <summary>
+    /// All captured output as a single string.
+    /// </summary>
     public String Text
         => String.Concat(listener.Entries);
 
 
-    /// <summary>True when the captured output contains the given hex string, case-insensitively.</summary>
+    /// <summary>
+    /// True when the captured output contains the given hex string, case-insensitively.
+    /// </summary>
     public Boolean ContainsHex(Byte[] value)
     {
 
@@ -50,7 +56,9 @@ public sealed class DebugXSink : IDisposable
     }
 
 
-    /// <summary>The captured entries that contain the given hex string — for failure messages.</summary>
+    /// <summary>
+    /// The captured entries that contain the given hex string — for failure messages.
+    /// </summary>
     public IEnumerable<String> EntriesContainingHex(Byte[] value)
     {
 

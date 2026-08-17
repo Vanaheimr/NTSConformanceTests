@@ -32,7 +32,9 @@ namespace NTSConformance.NTSKE.Tests;
 public class NtsKeWarningRecordTests
 {
 
-    /// <summary>An arbitrary unassigned warning code. Every code is unassigned; this one is unremarkable.</summary>
+    /// <summary>
+    /// An arbitrary unassigned warning code. Every code is unassigned; this one is unremarkable.
+    /// </summary>
     private const UInt16 SomeWarningCode = 1;
 
     private const UInt16 AeadAesSivCmac256 = 15;

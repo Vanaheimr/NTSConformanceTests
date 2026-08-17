@@ -8,7 +8,9 @@ namespace NTSConformance.Core.RawNtp;
 public static class RawNtpWriter
 {
 
-    /// <summary>Serialize a packet: 48-octet header, extension fields, optional trailing bytes.</summary>
+    /// <summary>
+    /// Serialize a packet: 48-octet header, extension fields, optional trailing bytes.
+    /// </summary>
     public static Byte[] Write(RawNtpPacket packet)
     {
 
@@ -27,7 +29,9 @@ public static class RawNtpWriter
     }
 
 
-    /// <summary>Just the 48-octet header — the associated data an NTS authenticator covers.</summary>
+    /// <summary>
+    /// Just the 48-octet header — the associated data an NTS authenticator covers.
+    /// </summary>
     public static Byte[] WriteHeaderOnly(RawNtpPacket packet)
     {
 

@@ -9,7 +9,9 @@ namespace NTSConformance.Core.RawNtp;
 public sealed record RawNtpReadOptions
 {
 
-    /// <summary>RFC 7822: every extension field is zero-padded to a four-octet boundary, so Length is a multiple of 4.</summary>
+    /// <summary>
+    /// RFC 7822: every extension field is zero-padded to a four-octet boundary, so Length is a multiple of 4.
+    /// </summary>
     public Boolean RequireLengthMultipleOfFour { get; init; } = true;
 
     /// <summary>
@@ -18,7 +20,9 @@ public sealed record RawNtpReadOptions
     /// </summary>
     public Boolean EnforceMinimumFieldLengths  { get; init; } = true;
 
-    /// <summary>Reject 1-3 leftover octets after the last extension field.</summary>
+    /// <summary>
+    /// Reject 1-3 leftover octets after the last extension field.
+    /// </summary>
     public Boolean RejectTrailingBytes         { get; init; } = true;
 
     /// <summary>
@@ -28,10 +32,14 @@ public sealed record RawNtpReadOptions
     public Boolean AllowLegacyMac              { get; init; }
 
 
-    /// <summary>Strict RFC 7822, no legacy MAC — what NTS traffic must satisfy.</summary>
+    /// <summary>
+    /// Strict RFC 7822, no legacy MAC — what NTS traffic must satisfy.
+    /// </summary>
     public static readonly RawNtpReadOptions Strict = new ();
 
-    /// <summary>Parse structure only, enforcing nothing beyond "the bytes are there".</summary>
+    /// <summary>
+    /// Parse structure only, enforcing nothing beyond "the bytes are there".
+    /// </summary>
     public static readonly RawNtpReadOptions Lenient = new () {
         RequireLengthMultipleOfFour  = false,
         EnforceMinimumFieldLengths   = false,

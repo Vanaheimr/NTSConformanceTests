@@ -24,7 +24,9 @@ public class ClientResponseValidationTests
 
     private NornServerFixture? fixture;
 
-    /// <summary>A genuine NTS exchange, captured once and then mutated per test.</summary>
+    /// <summary>
+    /// A genuine NTS exchange, captured once and then mutated per test.
+    /// </summary>
     private NTSKE_Response? ntsKeResponse;
     private NTPResponse?    goodResponse;
     private NTPRequest?     goodRequest;
@@ -76,7 +78,9 @@ public class ClientResponseValidationTests
     }
 
 
-    /// <summary>The unmodified exchange must validate — otherwise every negative test below is vacuous.</summary>
+    /// <summary>
+    /// The unmodified exchange must validate — otherwise every negative test below is vacuous.
+    /// </summary>
     [Test]
     public void GenuineResponse_Validates()
     {

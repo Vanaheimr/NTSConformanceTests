@@ -72,7 +72,9 @@ public class RateKissOnTheWireTests
     }
 
 
-    /// <summary>Spend the bucket, so the next request is a limited one.</summary>
+    /// <summary>
+    /// Spend the bucket, so the next request is a limited one.
+    /// </summary>
     private void DrainTheBucket()
     {
         for (var i = 0; i < Burst; i++)

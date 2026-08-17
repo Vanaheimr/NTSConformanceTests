@@ -14,7 +14,9 @@ public static class TestEnvironment
 
     #region Network (UDP/123)
 
-    /// <summary>Public NTP servers used only to decide whether outbound NTP works at all.</summary>
+    /// <summary>
+    /// Public NTP servers used only to decide whether outbound NTP works at all.
+    /// </summary>
     private static readonly String[] probeServers = [ "time.cloudflare.com", "ptbtime1.ptb.de" ];
 
     private static readonly Lazy<Boolean> hasNetwork = new(() => {
@@ -51,7 +53,9 @@ public static class TestEnvironment
 
     });
 
-    /// <summary>True when a public NTP server answers a raw UDP probe on port 123.</summary>
+    /// <summary>
+    /// True when a public NTP server answers a raw UDP probe on port 123.
+    /// </summary>
     public static Boolean HasNetwork
         => hasNetwork.Value;
 
@@ -81,7 +85,9 @@ public static class TestEnvironment
         }
     });
 
-    /// <summary>True when an outbound NTS-KE TCP connection to a public server succeeds.</summary>
+    /// <summary>
+    /// True when an outbound NTS-KE TCP connection to a public server succeeds.
+    /// </summary>
     public static Boolean HasNtsKeReachability
         => hasNtsKeReachability.Value;
 

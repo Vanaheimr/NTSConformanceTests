@@ -28,7 +28,9 @@ public class RawAesSivReferenceTests
         "f69f2445 df4f9b17 ad2b417b e66c3710");
 
 
-    /// <summary>RFC 4493 §4: AES-128(K, 0^128) and the two derived subkeys.</summary>
+    /// <summary>
+    /// RFC 4493 §4: AES-128(K, 0^128) and the two derived subkeys.
+    /// </summary>
     [Test]
     public void Rfc4493_SubkeyGeneration()
     {
@@ -46,7 +48,9 @@ public class RawAesSivReferenceTests
     }
 
 
-    /// <summary>RFC 4493 §4, examples 1 to 4: CMAC over 0, 16, 40 and 64 octets.</summary>
+    /// <summary>
+    /// RFC 4493 §4, examples 1 to 4: CMAC over 0, 16, 40 and 64 octets.
+    /// </summary>
     [TestCase( 0, "bb1d6929e95937287fa37d129b756746", TestName = "Rfc4493_Cmac_Example1_EmptyMessage")]
     [TestCase(16, "070a16b46b4d4144f79bdd9dd04a287c", TestName = "Rfc4493_Cmac_Example2_OneBlock")]
     [TestCase(40, "dfa66747de9ae63030ca32611497c827", TestName = "Rfc4493_Cmac_Example3_PartialBlock")]
@@ -97,7 +101,9 @@ public class RawAesSivReferenceTests
     }
 
 
-    /// <summary>The S2V intermediates printed in A.1, checked one step at a time.</summary>
+    /// <summary>
+    /// The S2V intermediates printed in A.1, checked one step at a time.
+    /// </summary>
     [Test]
     public void Rfc5297_A1_S2V_Intermediates()
     {
@@ -172,7 +178,9 @@ public class RawAesSivReferenceTests
     }
 
 
-    /// <summary>Decrypting the A.2 output must recover the plaintext exactly.</summary>
+    /// <summary>
+    /// Decrypting the A.2 output must recover the plaintext exactly.
+    /// </summary>
     [Test]
     public void Rfc5297_A2_Decrypt()
     {
@@ -251,7 +259,9 @@ public class RawAesSivReferenceTests
     }
 
 
-    /// <summary>Round-trip over a range of plaintext lengths, including the block boundaries.</summary>
+    /// <summary>
+    /// Round-trip over a range of plaintext lengths, including the block boundaries.
+    /// </summary>
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(15)]

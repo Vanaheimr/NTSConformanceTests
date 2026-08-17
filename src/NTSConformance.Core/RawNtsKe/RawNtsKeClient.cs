@@ -8,7 +8,9 @@ using org.GraphDefined.Vanaheimr.Hermod;
 
 namespace NTSConformance.Core.RawNtsKe;
 
-/// <summary>The outcome of one raw NTS-KE exchange.</summary>
+/// <summary>
+/// The outcome of one raw NTS-KE exchange.
+/// </summary>
 /// <param name="Records">
 /// The records the server sent back, or null when it sent nothing at all.
 /// </param>
@@ -25,14 +27,18 @@ public sealed record RawNtsKeExchange(Boolean                    HandshakeSuccee
                                       String?                    Diagnosis)
 {
 
-    /// <summary>The records of the given type, or an empty sequence.</summary>
+    /// <summary>
+    /// The records of the given type, or an empty sequence.
+    /// </summary>
     public IEnumerable<RawNtsKeRecord> RecordsOfType(UInt16 recordType)
         => Records?.Where(record => record.RecordType == recordType) ?? [];
 
     public RawNtsKeRecord? FirstRecordOfType(UInt16 recordType)
         => Records?.FirstOrDefault(record => record.RecordType == recordType);
 
-    /// <summary>The Error record's code, or null when the server sent no Error record.</summary>
+    /// <summary>
+    /// The Error record's code, or null when the server sent no Error record.
+    /// </summary>
     public UInt16? ErrorCode
     {
         get
@@ -48,7 +54,9 @@ public sealed record RawNtsKeExchange(Boolean                    HandshakeSuccee
     }
 
 
-    /// <summary>A readable summary for a failure message.</summary>
+    /// <summary>
+    /// A readable summary for a failure message.
+    /// </summary>
     public override String ToString()
     {
 
@@ -91,7 +99,9 @@ public sealed record RawNtsKeExchange(Boolean                    HandshakeSuccee
 public static class RawNtsKeClient
 {
 
-    /// <summary>The ALPN protocol RFC 8915 §4 assigns to NTS-KE.</summary>
+    /// <summary>
+    /// The ALPN protocol RFC 8915 §4 assigns to NTS-KE.
+    /// </summary>
     public static readonly SslApplicationProtocol NtsKeAlpn = new ("ntske/1");
 
 
@@ -242,7 +252,9 @@ public static class RawNtsKeClient
     }
 
 
-    /// <summary>Whether a complete NTS-KE message has arrived, i.e. an End of Message record.</summary>
+    /// <summary>
+    /// Whether a complete NTS-KE message has arrived, i.e. an End of Message record.
+    /// </summary>
     private static Boolean ContainsEndOfMessage(Byte[] buffer)
     {
 
