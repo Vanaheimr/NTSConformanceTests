@@ -1,7 +1,18 @@
+*.pidb
+__pycache__/
+*.VisualState.xml
+*.suo
 bin/
 obj/
+.vs
+.vs/*
 TestResults/
 *.user
+
+# Where both workflows point --results-directory for their .trx logs. On a runner
+# that is a throwaway directory an upload-artifact step collects; run the same
+# command locally to reproduce a CI result and it lands in the working tree.
+artifacts/
 
 # Norn's NTSServer persists rotating cookie master keys to this file when
 # MasterKeysFilePath is left at its default. Fixtures pass null, but a stray
