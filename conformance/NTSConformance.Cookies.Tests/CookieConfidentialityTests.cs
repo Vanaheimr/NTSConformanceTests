@@ -117,10 +117,12 @@ public class CookieConfidentialityTests
     public void SuccessiveCookies_AreNotIdentical()
     {
 
-        var masterKey = NewMasterKey();
+        var masterKey    = NewMasterKey();
+        var firstCookie  = Bytes.ToHex(SealedCookie(masterKey));
+        var secondCookie = Bytes.ToHex(SealedCookie(masterKey));
 
-        Assert.That(Bytes.ToHex(SealedCookie(masterKey)),
-                    Is.Not.EqualTo(Bytes.ToHex(SealedCookie(masterKey))),
+        Assert.That(firstCookie,
+                    Is.Not.EqualTo(secondCookie),
                     "successive cookies for one session are identical, so they act as a linkable session identifier");
 
     }
