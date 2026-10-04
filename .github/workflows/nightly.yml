@@ -241,7 +241,31 @@ jobs:
     # real disagreement is not something anybody has to go hunting for.
     continue-on-error: true
     runs-on: ubuntu-latest
-    container: debian:13
+    # CAP_SYS_TIME, which the other Linux jobs do without. The first honest run
+    # of this lane earned this line: upstream chronyd exited at startup with
+    #
+    #     adjtimex(0x8001) failed : Operation not permitted
+    #
+    # and 0x8001 is ADJ_OFFSET_SINGLESHOT -- a one-shot step of the system
+    # clock, which a container is not granted by default. chronyd treats the
+    # refusal as fatal, so it never bound a socket and all ten chrony checks
+    # skipped themselves.
+    #
+    # Worth knowing before changing this: the fatality is not new, 4.6.1 has
+    # the identical LOGS_FATAL in sys_timex.c, and 4.6.1 nevertheless starts in
+    # this same image -- the pinned-peer lane above proves it every night. So
+    # 4.9 reaches a clock-stepping call that 4.6.1 does not. A likely candidate
+    # is the clock-interference check 4.9 added to that same function, which
+    # 4.6.1 does not have, but that is a guess and the EPERM is the fact.
+    #
+    # Granting the capability rather than passing chronyd -x: the fixtures are
+    # shared with the pinned lane, and the whole value of this one is that the
+    # peer versions are the only thing that differs. Nothing here can steal the
+    # runner's clock either way -- the fixture configures no sources, so there
+    # is nothing to slew towards, and the runner is torn down afterwards.
+    container:
+      image: debian:13
+      options: --cap-add=SYS_TIME
     env:
       # Bumping a peer is a one-line edit here. The hashes are pinned so that a
       # re-tagged or replaced artefact fails the download loudly instead of
