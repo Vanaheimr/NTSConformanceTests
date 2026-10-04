@@ -337,6 +337,11 @@ jobs:
       # says what it was holding. The fixtures gate on these same banners:
       # chronyd must report +NTS or every chrony check skips itself, and
       # ntp-daemon must name itself in its own banner.
+      #
+      # tee rather than a plain redirect, so the banners reach the step log as
+      # well as the summary. Anybody investigating a red lane from the command
+      # line reads the log, and a redirect would have left the one fact they
+      # need -- which versions this was -- visible only in a browser.
       - name: Record the peer versions
         run: |
           {
@@ -350,7 +355,7 @@ jobs:
             echo
             echo 'Debian 13 for comparison: chrony 4.6.1 and ntpd-rs 1.4.0 — the'
             echo 'versions the full-suite job tests, and the ones a developer WSL has.'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/checkout@v7
         with:
