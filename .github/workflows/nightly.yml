@@ -357,6 +357,84 @@ jobs:
             echo 'versions the full-suite job tests, and the ones a developer WSL has.'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # A lane whose peers quietly fail to start is worse than no lane at all.
+      # Every check that needs a daemon calls Assert.Ignore when it cannot get
+      # one, NUnit counts that as a skip rather than a failure, and the job goes
+      # green having proved nothing. That is precisely what this lane's first
+      # working run did: 17 passed, 13 skipped, both daemons never up, job
+      # green. So the peers are smoke-tested here, before the suite is allowed
+      # to draw conclusions from them, and the step is fatal.
+      #
+      # The two configurations mirror what ChronyNtsServerFixture and
+      # NtpdRsNtsServerFixture write, down to the _chrony chown and the
+      # 'user root' that lets chronyd read its key after the privilege drop.
+      # The difference is that this keeps each daemon's own output instead of
+      # discarding it: the fixtures have four separate ways to give up and one
+      # message for all of them, which is enough to know that a peer did not
+      # come up and never enough to know why.
+      #
+      # The port counts match the fixtures' own bar — they wait for at least
+      # two listening sockets, which is what an IPv4 and IPv6 bind of the NTP
+      # and NTS-KE ports produces.
+      - name: Smoke-test that both peers actually start
+        run: |
+          mkdir -p /tmp/smoke
+          cd /tmp/smoke
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
+            -keyout key.pem -out cert.pem -days 1 -subj '/CN=smoke.test' \
+            -addext 'subjectAltName=DNS:smoke.test,IP:127.0.0.1' >/dev/null 2>&1
+          chmod 644 cert.pem
+          chmod 640 key.pem
+          chmod 755 /tmp/smoke
+          chown _chrony:_chrony cert.pem key.pem /tmp/smoke 2>/dev/null || true
+
+          printf '%s\n' 'port 24567' 'ntsport 24568' \
+            'ntsservercert /tmp/smoke/cert.pem' 'ntsserverkey /tmp/smoke/key.pem' \
+            'ntsdumpdir /tmp/smoke' 'user root' 'local stratum 10' 'allow all' \
+            'bindaddress 0.0.0.0' 'driftfile /tmp/smoke/drift' > chrony.conf
+
+          echo '--- chronyd, started the way the fixture starts it ---'
+          /usr/sbin/chronyd -f /tmp/smoke/chrony.conf -L 0 > chronyd.out 2>&1 || true
+          sleep 5
+          echo 'its output:'
+          sed 's/^/  /' chronyd.out || true
+          chrony_up=$(ss -lntu 2>/dev/null | grep -c -E ':(24567|24568)' || true)
+          echo "listening sockets: ${chrony_up} (the fixture needs 2)"
+          pkill -x chronyd 2>/dev/null || true
+          sleep 1
+
+          printf '%s\n' '[observability]' 'log-level = "info"' '' \
+            '[synchronization]' 'local-stratum = 10' '' \
+            '[[server]]' 'listen = "0.0.0.0:34567"' '' \
+            '[[nts-ke-server]]' 'listen = "0.0.0.0:34568"' \
+            'certificate-chain-path = "/tmp/smoke/cert.pem"' \
+            'private-key-path = "/tmp/smoke/key.pem"' 'ntp-port = 34567' > ntp.toml
+
+          echo '--- ntp-daemon, started the way the fixture starts it ---'
+          ntp-ctl validate -c /tmp/smoke/ntp.toml || true
+          ntp-daemon -c /tmp/smoke/ntp.toml > ntpd.out 2>&1 &
+          sleep 5
+          echo 'its output:'
+          sed 's/^/  /' ntpd.out || true
+          ntpd_up=$(ss -lntu 2>/dev/null | grep -c -E ':(34567|34568)' || true)
+          echo "listening sockets: ${ntpd_up} (the fixture needs 2)"
+          pkill -x ntp-daemon 2>/dev/null || true
+
+          ok=0
+          [ "${chrony_up}" -ge 2 ] || { echo 'FAIL: upstream chronyd did not listen'; ok=1; }
+          [ "${ntpd_up}" -ge 2 ]   || { echo 'FAIL: upstream ntp-daemon did not listen'; ok=1; }
+          if [ "${ok}" -ne 0 ]; then
+            {
+              echo
+              echo '### A peer did not start'
+              echo
+              echo 'The interop checks were not run: with no daemon they would have'
+              echo 'skipped themselves and left this job green on 0 evidence. The step'
+              echo 'log has each daemon output verbatim.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
         with:
           submodules: recursive
@@ -373,14 +451,50 @@ jobs:
       # continue-on-error keeps it off the workflow's result, and a step that
       # swallowed its own exit code would make this job look healthy in the one
       # case worth reading.
+      #
+      # A skip is treated as a failure here, which is the opposite of what it
+      # means everywhere else in this repository. Elsewhere a skipped interop
+      # check is honest reporting — no WSL on a Windows runner, no chronyd on a
+      # bare machine — and the pinned lane relies on that. In this lane the
+      # peers are installed three steps up and smoke-tested two steps up, so a
+      # check that skips anyway is a check that could not use a peer that
+      # demonstrably works, and reading the job as green would be reading 0
+      # evidence as agreement. The pinned lane's count is the bar: 30 of 30.
       - name: Test (interop against upstream chrony and ntpd-rs)
         timeout-minutes: 45
-        run: >
-          dotnet test NTSConformanceTests.slnx --configuration Release --no-build
-          --filter "TestCategory=WSL"
-          --logger "console;verbosity=normal"
-          --logger "trx;LogFilePrefix=upstream-interop"
-          --results-directory artifacts
+        run: |
+          if dotnet test NTSConformanceTests.slnx --configuration Release --no-build \
+               --filter "TestCategory=WSL" \
+               --logger "console;verbosity=normal" \
+               --logger "trx;LogFilePrefix=upstream-interop" \
+               --results-directory artifacts > test.out 2>&1
+          then rc=0
+          else rc=$?
+          fi
+          cat test.out
+          # tail -1, not a sum: dotnet test prints either one line per assembly
+          # or one grand total depending on the SDK, and on a version that
+          # prints both, summing would double-count and put a wrong number in
+          # the summary. Only the interop assembly runs under this filter, so
+          # the last occurrence is the authoritative one either way. The
+          # defaults cover a run that died before summarizing -- rc catches
+          # that first, but an empty string in the test below is a dash error
+          # rather than a verdict.
+          skipped=$(grep -oE 'Skipped: +[0-9]+' test.out | grep -oE '[0-9]+' | tail -1)
+          passed=$(grep -oE 'Passed: +[0-9]+' test.out | grep -oE '[0-9]+' | tail -1)
+          : "${skipped:=0}"
+          : "${passed:=0}"
+          {
+            echo
+            echo '### Interop counts against the upstream peers'
+            echo
+            echo "passed ${passed}, skipped ${skipped} (the pinned-peer lane: 30 passed, 0 skipped)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "${rc}" -eq 0 ] || exit "${rc}"
+          if [ "${skipped}" -ne 0 ]; then
+            echo "FAIL: ${skipped} interop checks skipped although both peers started."
+            exit 1
+          fi
 
       # always(), because the outcome matters most when the step above failed.
       - name: Summarize the outcome
