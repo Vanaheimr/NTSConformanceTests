@@ -198,3 +198,177 @@ jobs:
           dotnet test NTSConformanceTests.slnx --configuration Release --no-build
           --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
           --logger "console;verbosity=normal"
+
+  # ---------------------------------------------------------------------------
+  # The upstream-peer lane: the interop suite against chrony and ntpd-rs as
+  # their own projects ship them, rather than as Debian does.
+  # ---------------------------------------------------------------------------
+  upstream-tools:
+    # The full-suite job above judges Norn against what Debian 13 packages —
+    # chrony 4.6.1 and ntpd-rs 1.4.0 — and that is the right default: it is
+    # what a developer's WSL has, which is what keeps the desk and CI
+    # comparable. But upstream has moved. chrony is at 4.9 (August 2026) and
+    # ntpd-rs at 1.9.0 (June 2026), and those are the peers a deployed Norn
+    # would actually meet. A disagreement that appears only against a current
+    # peer is invisible to every other job in this repository.
+    #
+    # Only the interop category runs here. The offline gate never touches an
+    # external peer, so running it against newer ones would prove nothing that
+    # the jobs above have not already proven twice.
+    #
+    # Informational, for a reason close to the public-server lane's: a red here
+    # can mean Norn is wrong, or that a peer changed its behaviour on purpose,
+    # or that one of the two downloads below moved — and only the first is a
+    # finding about this repository. So it must not be able to turn the night
+    # red. The step summary carries both version banners and the outcome, so a
+    # real disagreement is not something anybody has to go hunting for.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    container: debian:13
+    env:
+      # Bumping a peer is a one-line edit here. The hashes are pinned so that a
+      # re-tagged or replaced artefact fails the download loudly instead of
+      # quietly changing what this lane measured. ntpd-rs's is the hash its own
+      # release SHA256SUMS publishes; chrony ships only a PGP signature, so its
+      # hash was taken from the tarball this lane was written against and
+      # attests continuity rather than authorship.
+      CHRONY_VERSION:     '4.9'
+      CHRONY_SHA256:      '4924c6f530105bcd5b9e9e33c48a2ae1bfd889222c8480bc41601110efc864d0'
+      NTPD_RS_VERSION:    '1.9.0'
+      NTPD_RS_DEB_SHA256: 'bfb1cb83bdc3705ef6a945ed81b00d8da2443057e57dfb8e7f4b61f695317a4d'
+    steps:
+
+      # git before the checkout, as in every other job here: without a git
+      # binary actions/checkout falls back to a REST tarball, which cannot
+      # fetch submodules — and libs/Norn IS the system under test.
+      - name: Install git and the .NET prerequisites (Debian container)
+        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+
+      # The distro packages go on first and then have their binaries replaced,
+      # which sounds backwards but is not: the Debian packaging is what creates
+      # the _chrony user that ChronyNtsServerFixture chowns its certificate and
+      # key to, and what brings the plumbing the fixtures drive — openssl for
+      # the throwaway certificates, iproute2 for the `ss` they poll until a
+      # daemon listens, procps for the `pkill` in their teardown. gnutls-bin is
+      # a peer in its own right and deliberately stays at trixie's version:
+      # this lane is about the two time daemons, and holding everything else
+      # still is what makes its answer readable.
+      #
+      # The rest is chrony's build dependency set. GnuTLS and Nettle are what
+      # NTS itself needs, libcap gives +PRIVDROP (the fixture's configuration
+      # depends on the privilege drop happening), libseccomp gives +SCFILTER.
+      - name: Install the distro peers and chrony's build dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            chrony ntpd-rs gnutls-bin openssl iproute2 procps \
+            gcc make pkg-config libgnutls28-dev nettle-dev libcap-dev libseccomp-dev
+
+      # Upstream ships an amd64 .deb under the same package name as Debian's,
+      # so this is an ordinary upgrade in place: /usr/bin/ntp-daemon and
+      # /usr/bin/ntp-ctl become 1.9.0, which is exactly where the fixture looks
+      # for them. The binaries are static apart from libc, so nothing else in
+      # the container moves to accommodate them.
+      - name: Install upstream ntpd-rs
+        run: |
+          cd /tmp
+          curl -fsSLO "https://github.com/pendulum-project/ntpd-rs/releases/download/v${NTPD_RS_VERSION}/ntpd-rs_${NTPD_RS_VERSION}-1_amd64.deb"
+          echo "${NTPD_RS_DEB_SHA256}  ntpd-rs_${NTPD_RS_VERSION}-1_amd64.deb" | sha256sum -c -
+          dpkg -i "ntpd-rs_${NTPD_RS_VERSION}-1_amd64.deb"
+
+      # chrony publishes no .deb, so it is built from the release tarball.
+      #
+      # --enable-scfilter and --enable-ntp-signd are not decoration: Debian
+      # builds with both, and without them the version banner would differ from
+      # trixie's in ways that have nothing to do with the version, leaving a
+      # reader of this lane unable to tell a 4.9 change from a build change.
+      # With them the only banner difference left is that 4.9 no longer prints
+      # +NTP and +ASYNCDNS; both features are still present (nameserv_async.c
+      # is still in the tree), they are simply unconditional now.
+      #
+      # The two binaries are copied rather than `make install`ed, because that
+      # target also recurses into doc/ to install man pages this container has
+      # no reader for. /usr/sbin/chronyd is the path the fixture starts by
+      # absolute name and chronyc is found on PATH; both are replaced, so
+      # nothing can quietly go on testing 4.6.1.
+      - name: Build and install upstream chrony
+        run: |
+          cd /tmp
+          curl -fsSLO "https://chrony-project.org/releases/chrony-${CHRONY_VERSION}.tar.gz"
+          echo "${CHRONY_SHA256}  chrony-${CHRONY_VERSION}.tar.gz" | sha256sum -c -
+          tar xzf "chrony-${CHRONY_VERSION}.tar.gz"
+          cd "chrony-${CHRONY_VERSION}"
+          ./configure --prefix=/usr --sbindir=/usr/sbin --bindir=/usr/bin --sysconfdir=/etc \
+                      --enable-scfilter --enable-ntp-signd
+          make -j"$(nproc)"
+          install -m 755 chronyd /usr/sbin/chronyd
+          install -m 755 chronyc /usr/bin/chronyc
+
+      # Written down before any test runs, so that a job which dies later still
+      # says what it was holding. The fixtures gate on these same banners:
+      # chronyd must report +NTS or every chrony check skips itself, and
+      # ntp-daemon must name itself in its own banner.
+      - name: Record the peer versions
+        run: |
+          {
+            echo '## Upstream peers under test'
+            echo
+            echo '```'
+            /usr/sbin/chronyd --version
+            ntp-daemon --version
+            gnutls-cli --version | head -1
+            echo '```'
+            echo
+            echo 'Debian 13 for comparison: chrony 4.6.1 and ntpd-rs 1.4.0 — the'
+            echo 'versions the full-suite job tests, and the ones a developer WSL has.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build NTSConformanceTests.slnx --configuration Release
+
+      # The same filter the pinned-peer interop lane uses, so the two are
+      # directly comparable. A failure is left to fail: the job's
+      # continue-on-error keeps it off the workflow's result, and a step that
+      # swallowed its own exit code would make this job look healthy in the one
+      # case worth reading.
+      - name: Test (interop against upstream chrony and ntpd-rs)
+        timeout-minutes: 45
+        run: >
+          dotnet test NTSConformanceTests.slnx --configuration Release --no-build
+          --filter "TestCategory=WSL"
+          --logger "console;verbosity=normal"
+          --logger "trx;LogFilePrefix=upstream-interop"
+          --results-directory artifacts
+
+      # always(), because the outcome matters most when the step above failed.
+      - name: Summarize the outcome
+        if: ${{ always() }}
+        run: |
+          {
+            echo
+            echo '### Interop against the upstream peers'
+            echo
+            if [ '${{ job.status }}' = 'success' ]; then
+              echo 'Agreed with both, as the pinned-peer lane does.'
+            else
+              echo 'Disagreed, or could not run. This lane is informational: the cause'
+              echo "can be Norn, a deliberate change in a peer, or this lane's own"
+              echo 'provisioning. The TRX artifact names the checks and their reasons.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # TRX preserves the per-check outcome and every skip reason, which is the
+      # evidence when a peer and Norn stop agreeing.
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-upstream-tools
+          path: artifacts/*.trx
