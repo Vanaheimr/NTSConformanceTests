@@ -483,7 +483,8 @@ jobs:
       # peers are installed three steps up and smoke-tested two steps up, so a
       # check that skips anyway is a check that could not use a peer that
       # demonstrably works, and reading the job as green would be reading 0
-      # evidence as agreement. The pinned lane's count is the bar: 30 of 30.
+      # evidence as agreement. The bar is zero skips rather than a count, so it
+      # holds as the suite grows; both lanes ran 30 checks on 2026-10-04.
       - name: Test (interop against upstream chrony and ntpd-rs)
         timeout-minutes: 45
         run: |
@@ -506,13 +507,19 @@ jobs:
           # rather than a verdict.
           skipped=$(grep -oE 'Skipped: +[0-9]+' test.out | grep -oE '[0-9]+' | tail -1)
           passed=$(grep -oE 'Passed: +[0-9]+' test.out | grep -oE '[0-9]+' | tail -1)
+          failed=$(grep -oE 'Failed: +[0-9]+' test.out | grep -oE '[0-9]+' | tail -1)
           : "${skipped:=0}"
           : "${passed:=0}"
+          : "${failed:=0}"
+          # Stated against itself rather than against a number written in here:
+          # a constant goes stale the first time a check is added, and the verdict
+          # never depended on it -- zero skips and a zero exit mean "everything ran
+          # and passed" for a suite of any size.
           {
             echo
             echo '### Interop counts against the upstream peers'
             echo
-            echo "passed ${passed}, skipped ${skipped} (the pinned-peer lane: 30 passed, 0 skipped)"
+            echo "${passed} of $((passed + skipped + failed)) checks passed, ${skipped} skipped, ${failed} failed."
           } >> "$GITHUB_STEP_SUMMARY"
           [ "${rc}" -eq 0 ] || exit "${rc}"
           if [ "${skipped}" -ne 0 ]; then
