@@ -263,17 +263,30 @@ jobs:
             chrony ntpd-rs gnutls-bin openssl iproute2 procps \
             gcc make pkg-config libgnutls28-dev nettle-dev libcap-dev libseccomp-dev
 
-      # Upstream ships an amd64 .deb under the same package name as Debian's,
-      # so this is an ordinary upgrade in place: /usr/bin/ntp-daemon and
-      # /usr/bin/ntp-ctl become 1.9.0, which is exactly where the fixture looks
-      # for them. The binaries are static apart from libc, so nothing else in
-      # the container moves to accommodate them.
+      # The .deb is unpacked rather than installed, which is not the obvious
+      # choice and is the one that works. Upstream's package declares
+      # `Conflicts: time-daemon`, and Debian's chrony *provides* time-daemon --
+      # so with chrony already on, and it has to be for the _chrony user and
+      # the fixture plumbing, dpkg refuses outright: "conflicting packages -
+      # not installing ntpd-rs". Debian's own ntpd-rs carries no such conflict,
+      # which is why the apt line above can ask for both.
+      #
+      # Unpacking sidesteps a packaging policy this lane has no stake in. What
+      # it wants is the newer binaries at the paths the fixtures use --
+      # TestEnvironment.RequireNtpdRs looks for ntp-daemon and ntp-ctl, and
+      # nothing here starts a service or consults the package database. It also
+      # makes this symmetric with the chrony step below, which likewise just
+      # replaces two binaries, and immune to upstream editing its control
+      # metadata again. The versions this lane reports come from the binaries'
+      # own banners, so a stale dpkg database is harmless and not load-bearing.
       - name: Install upstream ntpd-rs
         run: |
           cd /tmp
           curl -fsSLO "https://github.com/pendulum-project/ntpd-rs/releases/download/v${NTPD_RS_VERSION}/ntpd-rs_${NTPD_RS_VERSION}-1_amd64.deb"
           echo "${NTPD_RS_DEB_SHA256}  ntpd-rs_${NTPD_RS_VERSION}-1_amd64.deb" | sha256sum -c -
-          dpkg -i "ntpd-rs_${NTPD_RS_VERSION}-1_amd64.deb"
+          dpkg-deb -x "ntpd-rs_${NTPD_RS_VERSION}-1_amd64.deb" ntpd-rs-unpacked
+          install -m 755 ntpd-rs-unpacked/usr/bin/ntp-daemon /usr/bin/ntp-daemon
+          install -m 755 ntpd-rs-unpacked/usr/bin/ntp-ctl    /usr/bin/ntp-ctl
 
       # chrony publishes no .deb, so it is built from the release tarball.
       #
