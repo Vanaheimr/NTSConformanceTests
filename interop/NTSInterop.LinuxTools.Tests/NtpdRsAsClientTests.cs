@@ -150,21 +150,46 @@ public class NtpdRsAsClientTests
 
 
     /// <summary>
-    /// Pull the offset out of an ntp-ctl source line, which reads
-    /// <c>172.17.80.1:34567/172.17.80.1:34567 (1): +0.003586±0.102581(±0.010523)s</c>. Returns
-    /// null when the source produced no measurement at all, which is what an unusable server
-    /// looks like.
+    /// Pull the offset out of <c>ntp-ctl status</c>, which prints it in one of two layouts
+    /// depending on the version of ntpd-rs. Returns null when the source produced no
+    /// measurement at all, which is what an unusable server looks like.
     ///
-    /// The sign is explicit in that output and may be either — a pattern that only allowed a
+    /// 1.4, which is what Debian trixie ships, puts a source on a single line:
+    /// <c>172.17.80.1:34567/172.17.80.1:34567 (1): +0.003586±0.102581(±0.010523)s</c>.
+    /// 1.9 breaks the same figures into labelled lines beneath the source's address:
+    /// <code>
+    /// 127.0.0.1:49498 127.0.0.1:49498 (1)
+    ///         Offset:                 +0.000021
+    ///         Uncertainty:            ±0.009512
+    /// </code>
+    /// Both are read, because the nightly's upstream-peer lane runs 1.9 against the same check
+    /// the pinned lane runs 1.4 against, and this output is the only evidence either lane has
+    /// that ntpd-rs <em>used</em> a reply rather than merely receiving it.
+    ///
+    /// The sign is explicit in both and may be either — a pattern that once allowed only a
     /// minus matched the negative offset it was written against and then read a perfectly good
     /// positive measurement as "no measurement at all".
+    ///
+    /// That was the first time the pattern rather than the protocol decided a verdict here, and
+    /// the layout change was the second: against 1.9 this reported that Norn's answers had been
+    /// refused while ntp-ctl was printing an offset of 21 µs and no missed polls. Hence both
+    /// layouts, and hence the source index in front of each: the number has to come from a line
+    /// about a source, not from the synchronization summary printed above them.
     /// </summary>
     private static Double? MeasuredOffsetSeconds(String status)
     {
 
+        // "(1): +0.000021±..." — 1.4 and earlier.
         var match = System.Text.RegularExpressions.Regex.Match(
                         status,
                         @"\(\d+\):\s*([+-]?\d+\.\d+)±"
+                    );
+
+        // "(1)" then a labelled "Offset:" on the next line — 1.9 and later.
+        if (!match.Success)
+            match = System.Text.RegularExpressions.Regex.Match(
+                        status,
+                        @"\(\d+\)[^\n]*\n\s*Offset:\s*([+-]?\d+\.\d+)"
                     );
 
         return match.Success &&
