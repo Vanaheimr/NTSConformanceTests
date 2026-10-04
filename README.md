@@ -235,7 +235,16 @@ Deliberately not covered, and why:
 - **RFC 1305 NTPv3 and RFC 4330 SNTP** — Norn is NTPv4 only. How it treats an older version
   number on the wire is a compatibility question, not a conformance one.
 - **RFC 5907 NTP MIB** — there is no SNMP management plane to test.
-- **IEEE 1588 PTP and NTS4PTP** — a different protocol family over a different transport.
+- **IEEE 1588 PTP and NTS4PTP** — `draft-ietf-ntp-nts-for-ptp` applies NTS key management to
+  PTP itself. That is a different protocol family with its own state machine, and Norn speaks
+  none of it.
+- **RFC 10030 NTP over PTP** — August 2026, Standards Track, and listed apart from the entry
+  above on purpose: it is not another protocol family but ordinary NTP carried inside a PTP
+  message, and the RFC notes that RFC 8915 keeps working over that transport. So it is out of
+  scope for a duller reason than the one above — Norn has no PTP transport, and what the
+  encapsulation buys is hardware timestamping in NICs that timestamp only PTP, which nothing
+  on a loopback can show. chrony 4.9 implements it, so the peer would be there if Norn ever
+  grew the transport.
 - **NTPv5** — `draft-ietf-ntp-ntpv5-09` (July 2026), proposed as Experimental and still moving;
   ntpd-rs tracks it draft by draft. There is nothing stable to conform to yet.
 - **Roughtime** — `draft-ietf-ntp-roughtime`, also still a draft. A different protocol with a
