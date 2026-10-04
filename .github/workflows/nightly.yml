@@ -198,6 +198,23 @@ jobs:
           dotnet test NTSConformanceTests.slnx --configuration Release --no-build
           --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
           --logger "console;verbosity=normal"
+          --logger "trx;LogFilePrefix=offline-norn-master"
+          --results-directory artifacts
+
+      # This is the one job whose red is a finding rather than a breakage, and
+      # it was the only one keeping no record of it. A referee that reports
+      # "Norn master disagrees" without naming the checks sends whoever reads it
+      # back to reproduce the whole thing by hand -- and the console log it had
+      # instead is gone once the run ages out. The TRX files name the checks and
+      # their messages; together with the submodule revisions the step above
+      # already writes into the summary, that is enough to reproduce a
+      # disagreement without first guessing which commit moved.
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-against-norn-master
+          path: artifacts/*.trx
 
   # ---------------------------------------------------------------------------
   # The upstream-peer lane: the interop suite against chrony and ntpd-rs as
