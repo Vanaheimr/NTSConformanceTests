@@ -73,9 +73,22 @@ jobs:
       # libssl3t64 for crypto (this is where the BCL's TLS 1.3 comes from on
       # this leg), ca-certificates for NuGet over HTTPS. Package names verified
       # on trixie.
+      #
+      # The git config line pins that git to HTTP/1.1. Debian's git negotiates
+      # HTTP/2 with github.com, and on 2026-10-15 the nightly's Debian leg went
+      # red before its first test with "Error in the HTTP2 framing layer" while
+      # fetching libs/Norn — one checkout in roughly ninety, and the only red
+      # night in three weeks. actions/checkout retries the main fetch but not
+      # the submodule update, so one dropped stream is a red run that says
+      # nothing about Norn. HTTP/1.1 takes the framing layer out of the picture,
+      # and a shallow clone of three repositories does not need multiplexing.
+      # --system, so it holds for every git call in the job, whatever HOME or
+      # repository config actions/checkout sets up for its own.
       - name: Install git and the .NET prerequisites (Debian container)
         if: runner.os == 'Linux'
-        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+          git config --system http.version HTTP/1.1
 
       # Windows only: Hermod carries FontAwesome icon files whose paths exceed
       # MAX_PATH once nested under the runner's workspace and libs/Hermod.

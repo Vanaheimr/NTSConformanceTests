@@ -52,9 +52,16 @@ jobs:
       # git must be installed BEFORE the checkout: without a git binary,
       # actions/checkout silently falls back to a REST tarball, which cannot
       # fetch submodules — and libs/Norn IS the system under test.
+      #
+      # git is pinned to HTTP/1.1 for the reason ci.yml gives in full: on
+      # 2026-10-15 this leg went red with "Error in the HTTP2 framing layer"
+      # while fetching libs/Norn, and actions/checkout does not retry a
+      # submodule update. Every Debian job below does the same.
       - name: Install git and the .NET prerequisites (Debian container)
         if: runner.os == 'Linux'
-        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+          git config --system http.version HTTP/1.1
 
       # The interop peers, native. trixie ships chrony 4.6.1 (built with +NTS —
       # the fixtures check the version banner and would skip, saying so, if it
@@ -171,8 +178,12 @@ jobs:
     runs-on: ubuntu-latest
     container: debian:13
     steps:
+      # HTTP/1.1 as in full-suite. Here it also covers the git fetch in the
+      # next-but-one step, which is a network fetch of its own.
       - name: Install git and the .NET prerequisites (Debian container)
-        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+          git config --system http.version HTTP/1.1
 
       - uses: actions/checkout@v7
         with:
@@ -281,9 +292,12 @@ jobs:
 
       # git before the checkout, as in every other job here: without a git
       # binary actions/checkout falls back to a REST tarball, which cannot
-      # fetch submodules — and libs/Norn IS the system under test.
+      # fetch submodules — and libs/Norn IS the system under test. HTTP/1.1
+      # as in full-suite.
       - name: Install git and the .NET prerequisites (Debian container)
-        run: apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
+          git config --system http.version HTTP/1.1
 
       # The distro packages go on first and then have their binaries replaced,
       # which sounds backwards but is not: the Debian packaging is what creates
