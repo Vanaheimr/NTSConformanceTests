@@ -247,8 +247,12 @@ Deliberately not covered, and why:
   grew the transport.
 - **NTPv5** — `draft-ietf-ntp-ntpv5-09` (July 2026), proposed as Experimental and still moving;
   ntpd-rs tracks it draft by draft. There is nothing stable to conform to yet.
-- **Roughtime** — `draft-ietf-ntp-roughtime`, also still a draft. A different protocol with a
-  different goal: rough time from servers you need not trust individually.
+- **RFC 10049 Roughtime** — October 2026, Experimental. A different protocol with a different
+  goal: rough time from servers you need not trust individually, on its own port (5319) with
+  its own messages, and neither NTP packets nor NTS-KE anywhere in it. Its one point of
+  contact with NTS is upstream of the handshake — a client with no trustworthy clock yet can
+  use it to get the time it needs to check an NTS-KE server's certificate — and that is the
+  client's bootstrapping, not something Norn's NTS implementation does.
 - **Leap second handling** — Norn reports the leap indicator it is given. Getting a leap right
   end to end needs a leap-second file and a clock that can be steered, which belongs to
   whatever does the steering rather than to the protocol implementation.
