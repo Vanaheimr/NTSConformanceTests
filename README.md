@@ -245,8 +245,10 @@ Deliberately not covered, and why:
   encapsulation buys is hardware timestamping in NICs that timestamp only PTP, which nothing
   on a loopback can show. chrony 4.9 implements it, so the peer would be there if Norn ever
   grew the transport.
-- **NTPv5** — `draft-ietf-ntp-ntpv5-09` (July 2026), proposed as Experimental and still moving;
-  ntpd-rs tracks it draft by draft. There is nothing stable to conform to yet.
+- **NTPv5** — `draft-ietf-ntp-ntpv5-10` (October 2026), Standards Track and still moving: -10
+  alone dropped leap-second announcements, redefined the clock status flag and the Time32
+  format, and replaced the reference-ID Bloom filter. ntpd-rs tracks it draft by draft. There
+  is nothing stable to conform to yet.
 - **RFC 10049 Roughtime** — October 2026, Experimental. A different protocol with a different
   goal: rough time from servers you need not trust individually, on its own port (5319) with
   its own messages, and neither NTP packets nor NTS-KE anywhere in it. Its one point of
