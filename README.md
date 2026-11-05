@@ -49,8 +49,9 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state: **548 tests green** in the hermetic gate, and no open defect — the one
-`KnownIssue` this suite has ever carried, AES-128-GCM-SIV against chronyd, was resolved and its
+Verified state on 5 November 2026: **595 tests green** in the hermetic gate (Norn's own 117
+included), and no open defect — the one `KnownIssue` this suite has ever carried,
+AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
 Interoperability is confirmed against three independent implementations, in every direction:
@@ -219,10 +220,14 @@ Not covered yet, in rough order of value:
   measure: its monitoring engine computes offsets but steers nothing.
 - **NTS pools** — adopted by the working group as `draft-ietf-ntp-nts-keyexchange-pool`
   (Experimental; -01 as of July 2026), with IANA early allocations for its NTS-KE record
-  types 8–14 since June 2026. ntpd-rs 1.9 already emits the allocated codepoints — though
-  Debian trixie still ships 1.4, so exercising them against Norn needs an upstream build.
-  The draft builds on §4.1.7 and §4.1.8, both of which now work here, so a pool key exchange
-  in front of Norn would be a realistic test rather than a speculative one.
+  types 8–14 since June 2026. Those records do not come from an ordinary NTS client: in the
+  ntpd-rs family they are sent by a separate pool key-exchange server
+  ([nts-pool](https://github.com/pendulum-project/nts-pool), no releases yet) to the servers
+  behind it, and the ntpd-rs 1.9 daemon only answers them as one of those servers. So the
+  nightly's ntpd-rs 1.9 never sends one to Norn, and a pool test needs both a Norn that
+  implements the draft and that pool server built from source. The draft builds on §4.1.7
+  and §4.1.8, both of which now work here, so a pool key exchange in front of Norn would be a
+  realistic test rather than a speculative one.
 
 ### Out of scope
 
