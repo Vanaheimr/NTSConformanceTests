@@ -13,7 +13,8 @@ Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC), **RFC 3686** (AES-CT
 **RFC 8633** (the NTP BCP), **RFC 9525** (service identity in TLS)
 and **RFC 7384** (security requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is asserted,
 what is planned, and what is deliberately out of scope. It also recomputes the test vectors of
-the specification of the **SSH Key Binding** record, the key derivation of NTS-KE over SSH — see
+the specification of the **SSH Key Binding** record, the key derivation of NTS-KE over SSH, and
+holds Norn's and Hermod's derivation to them — see
 [NTS-KE over SSH](#nts-ke-over-ssh--the-ssh-key-binding-record).
 
 ## Why a second implementation
@@ -53,7 +54,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state on 10 November 2026: **696 tests green** in the hermetic gate (Norn's own 200
+Verified state on 10 November 2026: **714 tests green** in the hermetic gate (Norn's own 200
 included), and no open defect — the one `KnownIssue` this suite has ever carried,
 AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
@@ -194,15 +195,19 @@ specification detailed enough for independent implementations to interoperate. I
 came from Norn, the only implementation there is; a vector computed by the code it checks proves
 only that the code agrees with itself. So `RawSshKeyBinding` derives the keys from the text of
 its Section 5 alone, on `RawHkdf`, and `SshKeyBindingVectorTests` recomputes every vector of its
-Appendix A, each intermediate on its own. Norn's own suite checks that Norn produces A.2 and A.3.2,
-and Hermod's that its exporter produces A.3.1; where this suite is green, all three agree.
+Appendix A, each intermediate on its own. `SshKeyBindingConformanceTests` then holds Norn and
+Hermod to that reference, entered where Norn enters it over SSH: Norn's keys for method `0x0002`
+and for method `0x0001` from `exporter_secret` on, Hermod's `exporter_secret` and the exporter of a
+connection handed to Norn — on the inputs of Appendix A, and on random ones, with K of other
+lengths and secrets of both hash lengths. A swapped salt and IKM in Hermod fails 11 of its 18
+tests, an `info` without the right length of its context in Norn 7.
 
 | Section | Focus | |
 |---|---|:--:|
-| §5.1, A.1 | The HKDF info: the label and the RFC 8915 §5.1 context, each as an SSH string with its length in front | 🟡 |
-| §5.3, A.2 | Method `0x0002`: HKDF-Expand-SHA256 with `nts_ke_secret` as the PRK, algorithms 15, 30 and 31, both directions | 🟡 |
-| §5.2, A.3.1 | Method `0x0001` from the key exchange: `exporter_secret`, PRK and keys of all four vectors — K as an mpint, as an mpint with a leading zero octet, as a string, and on SHA-512 — and the two K taken from RFC 7748, encoded here as mpints | 🟡 |
-| §5.2, A.3.2 | Method `0x0001` from `exporter_secret` on: PRK and keys for algorithms 15, 30 and 31 | 🟡 |
+| §5.1, A.1 | The HKDF info: the label and the RFC 8915 §5.1 context, each as an SSH string with its length in front — and Norn's context and info and Hermod's info octet for octet the same | ✅ |
+| §5.3, A.2 | Method `0x0002`: HKDF-Expand-SHA256 with `nts_ke_secret` as the PRK, algorithms 15, 30 and 31, both directions — and Norn's keys the reference's, on A.2 and on random secrets | ✅ |
+| §5.2, A.3.1 | Method `0x0001` from the key exchange: `exporter_secret`, PRK and keys of all four vectors — K as an mpint, as an mpint with a leading zero octet, as a string, and on SHA-512 — and the two K taken from RFC 7748, encoded here as mpints; Hermod's `exporter_secret` and its exporter of a connection, through Norn, the reference's on all four and on random key exchanges | ✅ |
+| §5.2, A.3.2 | Method `0x0001` from `exporter_secret` on: PRK and keys for algorithms 15, 30 and 31 — and Norn's keys the reference's, on A.3.2 and on random secrets of SHA-256 and SHA-512 length | ✅ |
 | §3, §4 | The record on the wire — request entries and their Data Length, the server's selection, the client's refusals — and a key exchange over SSH with Norn | ⬜ |
 
 ### Transport and PKI
@@ -234,12 +239,11 @@ streams out, which is the whole of what a CLI promises.
 
 Not covered yet, in rough order of value:
 
-- **NTS-KE over SSH against Norn** — the key derivation is checked against the specification
-  (see [above](#nts-ke-over-ssh--the-ssh-key-binding-record)), Norn itself not yet, although
-  `libs/Norn` is now pinned past its SSH work. Next are a differential of Norn's two exporters against
-  `RawSshKeyBinding`, and the record on the wire, driven from the raw NTS-KE codec through
-  Hermod's SSH: entries a server must skip by their Data Length, the requests it must refuse
-  with Bad Request, and the responses a client must abort on (Sections 4.1 and 4.2).
+- **NTS-KE over SSH on the wire** — the key derivation of Norn and Hermod is checked against the
+  specification (see [above](#nts-ke-over-ssh--the-ssh-key-binding-record)); the record on the
+  wire is not yet. Next is driving it from the raw NTS-KE codec through Hermod's SSH: entries a
+  server must skip by their Data Length, the requests it must refuse with Bad Request, and the
+  responses a client must abort on (Sections 4.1 and 4.2).
 - **RFC 8633's remaining operational advice** — § 5.1's information leakage (an access list on
   who may query at all), and § 5.2's panic threshold, which needs a Norn that steers a clock
   rather than only measuring one. § 5.4, the rate limiting and the kiss codes, is done.
@@ -312,7 +316,7 @@ src/NTSConformance.Core/                 the harness
 conformance/
   NTSConformance.WireFormat.Tests/       RFC 5905 header, RFC 7822 framing, timestamps, the registries
   NTSConformance.Crypto.Tests/           RFC 5297 / 4493 / 5869 vectors, differential vs reference,
-                                         the SSH Key Binding vectors
+                                         the SSH Key Binding vectors, and Norn and Hermod against them
   NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, server negotiation, warnings, certificates
   NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, where its query goes
   NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock, interleaved mode
