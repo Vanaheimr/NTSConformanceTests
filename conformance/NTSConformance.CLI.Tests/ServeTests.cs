@@ -208,6 +208,89 @@ public class ServeTests
 
 
     /// <summary>
+    /// <c>--deny</c> and <c>--allow</c> reach the access list of RFC 8633 § 5.1. Of two loopback
+    /// addresses, the one allowed inside everything denied is answered and the other gets
+    /// nothing, not even a kiss. And the server says at startup whom it serves.
+    /// </summary>
+    /// <remarks>
+    /// All of 127.0.0.0/8 is loopback, so a client bound to 127.0.0.2 reaches the server on
+    /// 127.0.0.1 from an address of its own. The server listens on IPv4 only here, so both
+    /// addresses arrive as IPv4 addresses. AccessListTests in the server tests covers the
+    /// dual-stack socket, where they do not.
+    /// </remarks>
+    [Test]
+    public void Serve_AnswersOnlyTheAddressesItIsToldTo()
+    {
+
+        var secondLoopbackAddress = System.Net.IPAddress.Parse("127.0.0.2");
+
+        try
+        {
+            using var probe = new System.Net.Sockets.UdpClient(new System.Net.IPEndPoint(secondLoopbackAddress, 0));
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            Assert.Ignore("this host does not route 127.0.0.2 to loopback, and the test needs a second client address — skipping.");
+        }
+
+        var (server, ntpPort, _) = Serve("--deny", "all", "--allow", "127.0.0.1");
+
+        using (server)
+        {
+
+            var denied   = RawNtpExchange.TryExchange(RawNtpPacket.ClientRequest(), "127.0.0.1", ntpPort,
+                                                      timeout:       TimeSpan.FromSeconds(1),
+                                                      localAddress:  secondLoopbackAddress);
+
+            var allowed  = RawNtpExchange.TryExchange(RawNtpPacket.ClientRequest(), "127.0.0.1", ntpPort,
+                                                      timeout:       TimeSpan.FromSeconds(5),
+                                                      localAddress:  System.Net.IPAddress.Loopback);
+
+            Assert.Multiple(() => {
+
+                Assert.That(server.Snapshot,
+                            Does.Contain("Access: deny 0.0.0.0/0, ::/0; allow 127.0.0.1/32"),
+                            "the server should say whom it serves, in the words of the networks it was given");
+
+                Assert.That(denied,
+                            Is.Null,
+                            $"127.0.0.2 is denied, and got {(denied?.IsKissOfDeath == true ? $"a {denied.KissCode} kiss" : "an answer")}\n{server.Snapshot}");
+
+                Assert.That(allowed?.IsKissOfDeath,
+                            Is.False,
+                            $"127.0.0.1 is allowed inside everything denied, and got {(allowed is null ? "nothing" : "a kiss")}\n{server.Snapshot}");
+
+            });
+
+        }
+
+    }
+
+
+    /// <summary>
+    /// <c>--allow</c> without <c>--deny</c> is refused with the command line that was most
+    /// likely meant.
+    /// </summary>
+    /// <remarks>
+    /// By itself, an allowed network allows what every address is allowed anyway. An operator
+    /// who writes <c>--allow 10.0.0.0/8</c> means to serve only that network. A server that took
+    /// the option as written would serve everyone and look as if it served only that network.
+    /// </remarks>
+    [Test]
+    public void Serve_AllowWithoutDeny_SaysWhatWasMeant()
+    {
+
+        var run = Norn.Run([ "serve", "--allow", "10.0.0.0/8" ], TimeSpan.FromSeconds(30));
+
+        Assert.Multiple(() => {
+            Assert.That(run.ExitCode, Is.EqualTo(2),                               run.Transcript);
+            Assert.That(run.StdErr,   Does.Contain("--deny all --allow 10.0.0.0/8"), run.Transcript);
+        });
+
+    }
+
+
+    /// <summary>
     /// The server reports what it is doing without being asked.
     /// </summary>
     /// <remarks>

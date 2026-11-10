@@ -24,19 +24,32 @@ public static class RawNtpExchange
     /// IPv6 listener needs an IPv6 socket even when the address is loopback.
     /// </param>
     /// <param name="timeout">How long to wait for the reply.</param>
+    /// <param name="localAddress">The address to send from — see <see cref="TryExchange"/>.</param>
     public static RawNtpPacket Exchange(RawNtpPacket    request,
                                         String          host,
                                         IPPort          port,
                                         AddressFamily?  addressFamily   = null,
-                                        TimeSpan?       timeout         = null)
+                                        TimeSpan?       timeout         = null,
+                                        IPAddress?      localAddress    = null)
 
-        => TryExchange(request, host, port, addressFamily, timeout)
+        => TryExchange(request, host, port, addressFamily, timeout, localAddress)
                ?? throw new SocketException((Int32) SocketError.TimedOut);
 
 
     /// <summary>
     /// Send a packet and read the reply, or return null if none comes.
     /// </summary>
+    /// <param name="request">The packet to send, malformed or not.</param>
+    /// <param name="host">The server's address — a literal, so no name resolution is involved.</param>
+    /// <param name="port">The server's UDP port.</param>
+    /// <param name="addressFamily">Which family to send from, when no local address is given.</param>
+    /// <param name="timeout">How long to wait for the reply.</param>
+    /// <param name="localAddress">
+    /// The address to send from, where it matters which: all of 127.0.0.0/8 is loopback, so a
+    /// client bound to 127.0.0.2 reaches a server on 127.0.0.1 from an address of its own, which
+    /// is how a test asks the same IPv4 listener as two different clients. Its family is the
+    /// family sent from.
+    /// </param>
     /// <remarks>
     /// Silence is a result rather than a failure here, because for some of what this suite
     /// checks silence is the correct behaviour: a rate-limited request is meant to be dropped,
@@ -48,12 +61,15 @@ public static class RawNtpExchange
                                             String          host,
                                             IPPort          port,
                                             AddressFamily?  addressFamily   = null,
-                                            TimeSpan?       timeout         = null)
+                                            TimeSpan?       timeout         = null,
+                                            IPAddress?      localAddress    = null)
     {
 
-        var family    = addressFamily ?? AddressFamily.InterNetwork;
+        var family    = localAddress?.AddressFamily ?? addressFamily ?? AddressFamily.InterNetwork;
 
-        using var udp = new UdpClient(family);
+        using var udp = localAddress is null
+                            ? new UdpClient(family)
+                            : new UdpClient(new IPEndPoint(localAddress, 0));
 
         udp.Client.ReceiveTimeout = (Int32) (timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds;
         udp.Connect(host, port.ToUInt16());

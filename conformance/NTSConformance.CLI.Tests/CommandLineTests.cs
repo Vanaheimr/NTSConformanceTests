@@ -128,6 +128,10 @@ public class CommandLineTests
     [TestCase("serve|--cert|x.pem",                       TestName = "UsageErrorsAreTwo(certificate without key)")]
     [TestCase("serve|--no-interleaved|--auth-interleaved",TestName = "UsageErrorsAreTwo(contradictory interleaved policies)")]
     [TestCase("serve|somewhere",                          TestName = "UsageErrorsAreTwo(serve takes no host)")]
+    [TestCase("serve|--allow|10.0.0.0/8",                 TestName = "UsageErrorsAreTwo(allowing without denying)")]
+    [TestCase("serve|--deny|all|--allow|10.0.0.0/8,10.1.0.0/16", TestName = "UsageErrorsAreTwo(allowing inside an allowed network)")]
+    [TestCase("serve|--deny|10.1.2.3/8",                  TestName = "UsageErrorsAreTwo(a network with bits beyond its prefix)")]
+    [TestCase("serve|--deny|time.example.com",            TestName = "UsageErrorsAreTwo(a name for a network)")]
     public void UsageErrorsAreTwo(String CommandLine)
     {
 

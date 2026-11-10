@@ -101,6 +101,10 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// Give the server an SSH listener for NTS-KE over SSH as well, which this key alone may log
     /// in to — see <see cref="ConnectSshAsync"/>.
     /// </param>
+    /// <param name="accessList">
+    /// Who may query the server at all, RFC 8633 § 5.1. Everyone by default, as in the server
+    /// itself.
+    /// </param>
     /// <param name="omitPortNegotiation">
     /// Advertise the host without a port, so the key exchange sends an NTPv4 Server Negotiation
     /// record and no NTPv4 Port Negotiation record.
@@ -125,7 +129,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     NTPRateLimiter?  rateLimiter                   = null,
                                                     Boolean          omitPortNegotiation           = false,
                                                     IEnumerable<AEADAlgorithms>? aeadAlgorithms    = null,
-                                                    ISshHostKey?     sshClientKey                  = null)
+                                                    ISshHostKey?     sshClientKey                  = null,
+                                                    NTPAccessList?   accessList                    = null)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 
@@ -154,6 +159,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                                 ClockResolution:               clockResolution,
                                 InterleavedMode:               interleavedMode,
                                 RateLimiter:                   rateLimiter,
+                                AccessList:                    accessList,
                                 SupportedAEADAlgorithms:       aeadAlgorithms,
                                 SSHPort:                       sshPort,
                                 SSHAuthenticator:              sshClientKey is null
@@ -218,9 +224,16 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// An SSH connection to the server's listener for NTS-KE over SSH, with the given key and the
     /// server's host key pinned — the whole of the server's authentication over SSH.
     /// </summary>
+    /// <param name="clientKey">The key to log in with.</param>
+    /// <param name="host">
+    /// The loopback address to connect to: <c>::1</c> reaches a listener on
+    /// <c>IPvXAddress.Any</c> from IPv6, which is how a test comes by a second client address.
+    /// </param>
+    /// <param name="cancellationToken">A cancellation token.</param>
     /// <exception cref="InvalidOperationException">The server was started without one.</exception>
     public ValueTask<SshClient> ConnectSshAsync(ISshHostKey        clientKey,
-                                                CancellationToken  cancellationToken = default)
+                                                String             host               = "127.0.0.1",
+                                                CancellationToken  cancellationToken  = default)
     {
 
         if (SSHPort is not { } sshPort)
@@ -228,7 +241,7 @@ public sealed class NornServerFixture : IAsyncDisposable
 
         var hostKey = Server.SSHHostKeys[0].PublicKeyBlob;
 
-        return SshClient.ConnectAsync("127.0.0.1",
+        return SshClient.ConnectAsync(host,
                                       sshPort.ToUInt16(),
                                       new SshClientOptions {
                                           Username       = "ntske",

@@ -55,7 +55,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state on 10 November 2026: **771 tests green** in the hermetic gate (Norn's own 201
+Verified state on 10 November 2026: **818 tests green** in the hermetic gate (Norn's own 231
 included), and no open defect — the one `KnownIssue` this suite has ever carried,
 AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
@@ -126,6 +126,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 5905 §7.4, 8633 §5.4 | Acting on a kiss code: `DENY` and `RSTR` demobilize the association, every `RATE` slows the client one step further, `X…` and unrecognized codes change nothing — and a kiss is believed only if it echoes the request | ✅ |
 | 8633 §5.4 | Server-side rate limiting: a token bucket per address that admits an `iburst`, a `RATE` kiss carrying the poll interval the server will serve, the kisses throttled per address and globally so a spoofed flood cannot be reflected, and the state capped in memory and in the cost of enforcing the cap | ✅ |
 | 8633 §5.4 | And chronyd adopts the exact poll exponent Norn's kiss asks for, having read the packet with none of Norn's code | ✅ |
+| 8633 §5.1 | An access list on who may query at all, everyone by default. A denied address gets no NTP answer and no kiss, because the list is asked before the rate limiter. Its NTS-KE connection is closed before the TLS handshake. Over SSH it gets no session once it has signed in, and cookies obtained from an allowed address do not get it answered either. The most specific network decides, and an IPv4 network matches an IPv4 client on a dual-stack socket, both where it allows and where it denies | ✅ |
 | 5905 §8 | Offset and delay arithmetic, recovered from randomly displaced client and server clocks; Norn's own `ClockOffset` cross-checked against this suite's | ✅ |
 | 5905 §11.3 | The root-distance inputs a client needs: dispersion non-zero, delay and dispersion surviving the short-format round trip | ✅ |
 | 5905 §7.3 | Leap indicator 3 — an unsynchronized server must be refused as a time source | ✅ |
@@ -244,7 +245,7 @@ streams out, which is the whole of what a CLI promises.
 |---|---|:--:|
 | `norn query` | Measures against an NTS or plain NTP server; `--plain`, `--count`, `--interleaved`, `--insecure` reach what they name, a Kiss-o'-Death is reported as itself rather than as four failed NTS checks | ✅ |
 | `norn ke` | Runs the key exchange alone and reports the TLS version, ALPN, certificate, timings and records — the stage where most of what goes wrong with NTS goes wrong | ✅ |
-| `norn serve` | Runs a server; `--stratum`, `--refid` and `--rate-limit` are observed on the wire by this suite's own raw client, and a taken port fails with a sentence rather than a stack trace | ✅ |
+| `norn serve` | Runs a server; `--stratum`, `--refid`, `--rate-limit`, `--deny` and `--allow` are observed on the wire by this suite's own raw client. An `--allow` without `--deny` is refused, with the command line that was most likely meant, and so is a network that changes nothing. A taken port fails with a sentence rather than a stack trace | ✅ |
 | Exit codes | 0 success, 1 the operation failed, 2 the command line could not be understood — a mistyped option is an error rather than a shrug | ✅ |
 | `--json` | stdout carries the document and nothing else; warnings and errors stay on stderr, including on failure | ✅ |
 
@@ -252,9 +253,11 @@ streams out, which is the whole of what a CLI promises.
 
 Not covered yet, in rough order of value:
 
-- **RFC 8633's remaining operational advice** — § 5.1's information leakage (an access list on
-  who may query at all), and § 5.2's panic threshold, which needs a Norn that steers a clock
-  rather than only measuring one. § 5.4, the rate limiting and the kiss codes, is done.
+- **RFC 8633 § 5.2's panic threshold** — needs a Norn that steers a clock rather than only
+  measuring one. § 5.1's access list and § 5.4's rate limiting and kiss codes are done.
+- **The access list over SSH before the SSH handshake** — Hermod's SSH server lets Norn turn
+  an address away only after sign-in, so a denied address still sees the SSH version string
+  and host key, as anyone who connects does. Over UDP and TLS it learns nothing.
 - **AEAD_AES_256_GCM_SIV (algorithm 31)** — implemented and vector-correct, and never run against
   an implementation other than this one, so it stays out of `NTSAEAD.Supported`. Nothing reachable
   from here offers it.
