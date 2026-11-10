@@ -126,7 +126,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 5905 §7.4, 8633 §5.4 | Acting on a kiss code: `DENY` and `RSTR` demobilize the association, every `RATE` slows the client one step further, `X…` and unrecognized codes change nothing — and a kiss is believed only if it echoes the request | ✅ |
 | 8633 §5.4 | Server-side rate limiting: a token bucket per address that admits an `iburst`, a `RATE` kiss carrying the poll interval the server will serve, the kisses throttled per address and globally so a spoofed flood cannot be reflected, and the state capped in memory and in the cost of enforcing the cap | ✅ |
 | 8633 §5.4 | And chronyd adopts the exact poll exponent Norn's kiss asks for, having read the packet with none of Norn's code | ✅ |
-| 8633 §5.1 | An access list on who may query at all, everyone by default. A denied address gets no NTP answer and no kiss, because the list is asked before the rate limiter. Its NTS-KE connection is closed before the TLS handshake. Over SSH it gets no session once it has signed in, and cookies obtained from an allowed address do not get it answered either. The most specific network decides, and an IPv4 network matches an IPv4 client on a dual-stack socket, both where it allows and where it denies | ✅ |
+| 8633 §5.1 | An access list on who may query at all, everyone by default. A denied address gets no NTP answer and no kiss, because the list is asked before the rate limiter. Its NTS-KE connection is closed before the TLS handshake, and its SSH connection before the version exchange, so it never sees the host key. Cookies obtained from an allowed address do not get it answered either. The most specific network decides, and an IPv4 network matches an IPv4 client on a dual-stack socket, both where it allows and where it denies | ✅ |
 | 5905 §8 | Offset and delay arithmetic, recovered from randomly displaced client and server clocks; Norn's own `ClockOffset` cross-checked against this suite's | ✅ |
 | 5905 §11.3 | The root-distance inputs a client needs: dispersion non-zero, delay and dispersion surviving the short-format round trip | ✅ |
 | 5905 §7.3 | Leap indicator 3 — an unsynchronized server must be refused as a time source | ✅ |
@@ -255,9 +255,6 @@ Not covered yet, in rough order of value:
 
 - **RFC 8633 § 5.2's panic threshold** — needs a Norn that steers a clock rather than only
   measuring one. § 5.1's access list and § 5.4's rate limiting and kiss codes are done.
-- **The access list over SSH before the SSH handshake** — Hermod's SSH server lets Norn turn
-  an address away only after sign-in, so a denied address still sees the SSH version string
-  and host key, as anyone who connects does. Over UDP and TLS it learns nothing.
 - **AEAD_AES_256_GCM_SIV (algorithm 31)** — implemented and vector-correct, and never run against
   an implementation other than this one, so it stays out of `NTSAEAD.Supported`. Nothing reachable
   from here offers it.

@@ -24,8 +24,8 @@ namespace NTSConformance.Server.Tests;
 /// <para>
 /// Every NTP response tells whoever asked the server's reference identifier, reference time,
 /// stratum and root distance, and § 5.1 recommends access control lists to limit who learns
-/// them. An address the list does not allow learns none of it, and over UDP and TLS not even
-/// that a server is there: no answer, no kiss, no TLS handshake.
+/// them. An address the list does not allow learns none of it, and not even that a server is
+/// there: no answer, no kiss, no TLS handshake, no SSH version string.
 /// </para>
 /// <para>
 /// One server and two client addresses in every test. The server listens on both address
@@ -158,6 +158,35 @@ public class AccessListTests
                RawNtsKeRecord.SshKeyBinding(RawSshKeyBinding.RequestBody(RawSshKeyBinding.MethodTransportedSecret)),
                RawNtsKeRecord.EndOfMessage()
            ]);
+
+
+    /// <summary>
+    /// What the server's SSH listener says to a client that connects and says nothing. An SSH
+    /// server speaks first, so that is its version string. A server that closes the connection
+    /// instead, gracefully or with a reset, says nothing.
+    /// </summary>
+    private static async Task<String> FirstWordsOverSshAsync(NornServerFixture  fixture,
+                                                             Client             client)
+    {
+
+        using var tcpClient  = new TcpClient(client.Family);
+        using var timeout    = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await tcpClient.ConnectAsync(client.Host, fixture.SSHPort!.Value.ToUInt16(), timeout.Token);
+
+        var buffer = new Byte[64];
+
+        try
+        {
+            var read = await tcpClient.GetStream().ReadAsync(buffer, timeout.Token);
+            return System.Text.Encoding.ASCII.GetString(buffer, 0, read);
+        }
+        catch (IOException)
+        {
+            return "";
+        }
+
+    }
 
 
     /// <summary>
@@ -394,27 +423,38 @@ public class AccessListTests
     #region NTS-KE over SSH
 
     /// <summary>
-    /// The denied address gets no NTS-KE session over SSH. The other address completes the key
-    /// exchange with the same server.
+    /// The SSH connection of the denied address is closed before the version exchange, so it
+    /// never sees the server's version string or its host key, which would name the server. The
+    /// other address hears the version string and completes the key exchange with the same server.
     /// </summary>
     /// <remarks>
-    /// Over SSH the list is asked once the client has signed in. That is the first point at which
-    /// Hermod's SSH server lets Norn decide. So, unlike over UDP and TLS, a denied address does
-    /// learn that a server is there: it sees the SSH version string and host key, as anyone who
-    /// connects does. What it does not get is a key exchange, and with it no cookies and no keys.
+    /// An SSH server speaks first, so the version string reaches a client that has sent nothing
+    /// yet. A server that decided only once the client had signed in would therefore show itself
+    /// to every address, and its host key to every address that went on with the handshake.
     /// </remarks>
     [TestCaseSource(nameof(Lists))]
-    public async Task SSH_TheDeniedAddress_GetsNoKeyExchange(Case Case)
+    public async Task SSH_TheDeniedAddress_IsClosedBeforeTheVersionExchange(Case Case)
     {
 
         await using var fixture = await StartAsync(Case.List);
 
-        var denied     = await ExchangeOverSshAsync(fixture, Case.Denied);
-        var allowed    = await ExchangeOverSshAsync(fixture, Case.Allowed);
+        var deniedHears   = await FirstWordsOverSshAsync(fixture, Case.Denied);
+        var allowedHears  = await FirstWordsOverSshAsync(fixture, Case.Allowed);
 
-        var responses  = await SettledAsync(() => fixture.Server.Metrics.NTSKEResponsesSent, 1);
+        var denied        = await ExchangeOverSshAsync(fixture, Case.Denied);
+        var allowed       = await ExchangeOverSshAsync(fixture, Case.Allowed);
+
+        var responses     = await SettledAsync(() => fixture.Server.Metrics.NTSKEResponsesSent, 1);
 
         Assert.Multiple(() => {
+
+            Assert.That(deniedHears,
+                        Is.Empty,
+                        $"{Case.Denied} is denied by {Case}, and the server spoke to it");
+
+            Assert.That(allowedHears,
+                        Does.StartWith("SSH-2.0-"),
+                        $"{Case.Allowed} is allowed by {Case}, and should hear the server's version string");
 
             Assert.That(denied.HandshakeSucceeded,
                         Is.False,
@@ -437,8 +477,8 @@ public class AccessListTests
                         $"one key exchange, the allowed one: {fixture.Server.Metrics}");
 
             Assert.That(fixture.Server.Metrics.NTSKEConnectionsDenied,
-                        Is.EqualTo(1),
-                        $"the server should count the session it turned away: {fixture.Server.Metrics}");
+                        Is.EqualTo(2),
+                        $"the server should count both connections it closed: {fixture.Server.Metrics}");
 
         });
 
