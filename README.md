@@ -53,7 +53,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state on 10 November 2026: **613 tests green** in the hermetic gate (Norn's own 117
+Verified state on 10 November 2026: **696 tests green** in the hermetic gate (Norn's own 200
 included), and no open defect — the one `KnownIssue` this suite has ever carried,
 AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
@@ -235,8 +235,8 @@ streams out, which is the whole of what a CLI promises.
 Not covered yet, in rough order of value:
 
 - **NTS-KE over SSH against Norn** — the key derivation is checked against the specification
-  (see [above](#nts-ke-over-ssh--the-ssh-key-binding-record)), Norn itself not yet: `libs/Norn`
-  is pinned before its SSH work. Next are a differential of Norn's two exporters against
+  (see [above](#nts-ke-over-ssh--the-ssh-key-binding-record)), Norn itself not yet, although
+  `libs/Norn` is now pinned past its SSH work. Next are a differential of Norn's two exporters against
   `RawSshKeyBinding`, and the record on the wire, driven from the raw NTS-KE codec through
   Hermod's SSH: entries a server must skip by their Data Length, the requests it must refuse
   with Bad Request, and the responses a client must abort on (Sections 4.1 and 4.2).
