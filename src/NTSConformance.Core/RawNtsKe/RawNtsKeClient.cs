@@ -255,7 +255,7 @@ public static class RawNtsKeClient
     /// <summary>
     /// Whether a complete NTS-KE message has arrived, i.e. an End of Message record.
     /// </summary>
-    private static Boolean ContainsEndOfMessage(Byte[] buffer)
+    internal static Boolean ContainsEndOfMessage(Byte[] buffer)
     {
 
         var offset = 0;

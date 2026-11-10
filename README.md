@@ -13,8 +13,9 @@ Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC), **RFC 3686** (AES-CT
 **RFC 8633** (the NTP BCP), **RFC 9525** (service identity in TLS)
 and **RFC 7384** (security requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is asserted,
 what is planned, and what is deliberately out of scope. It also recomputes the test vectors of
-the specification of the **SSH Key Binding** record, the key derivation of NTS-KE over SSH, and
-holds Norn's and Hermod's derivation to them — see
+the specification of the **SSH Key Binding** record, the key derivation of NTS-KE over SSH,
+holds Norn's and Hermod's derivation to them, and drives the record on the wire against Norn's
+server and client over SSH — see
 [NTS-KE over SSH](#nts-ke-over-ssh--the-ssh-key-binding-record).
 
 ## Why a second implementation
@@ -54,7 +55,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state on 10 November 2026: **714 tests green** in the hermetic gate (Norn's own 200
+Verified state on 10 November 2026: **770 tests green** in the hermetic gate (Norn's own 200
 included), and no open defect — the one `KnownIssue` this suite has ever carried,
 AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
@@ -202,13 +203,25 @@ connection handed to Norn — on the inputs of Appendix A, and on random ones, w
 lengths and secrets of both hash lengths. A swapped salt and IKM in Hermod fails 11 of its 18
 tests, an `info` without the right length of its context in Norn 7.
 
+On the wire, `NtsKeOverSshServerTests` sends requests written by the suite's own codec in the
+NTS-KE subsystem of Norn's SSH listener (`RawNtsKeOverSsh`), and `ClientNtsKeOverSshTests` answers
+Norn's client from `ScriptedNtsKeOverSshServer`, Hermod's SSH server with a script in that
+subsystem. The server's cookies are spent to see which keys it sealed into them: an NTS request
+under the C2S key derived here must be answered under the S2C key derived here. The record type is
+still the provisional 16386 (`0x4002`); `RawNtsKeRecordTypes.SshKeyBinding` is the one place to
+change once IANA has assigned it.
+
 | Section | Focus | |
 |---|---|:--:|
 | §5.1, A.1 | The HKDF info: the label and the RFC 8915 §5.1 context, each as an SSH string with its length in front — and Norn's context and info and Hermod's info octet for octet the same | ✅ |
 | §5.3, A.2 | Method `0x0002`: HKDF-Expand-SHA256 with `nts_ke_secret` as the PRK, algorithms 15, 30 and 31, both directions — and Norn's keys the reference's, on A.2 and on random secrets | ✅ |
 | §5.2, A.3.1 | Method `0x0001` from the key exchange: `exporter_secret`, PRK and keys of all four vectors — K as an mpint, as an mpint with a leading zero octet, as a string, and on SHA-512 — and the two K taken from RFC 7748, encoded here as mpints; Hermod's `exporter_secret` and its exporter of a connection, through Norn, the reference's on all four and on random key exchanges | ✅ |
 | §5.2, A.3.2 | Method `0x0001` from `exporter_secret` on: PRK and keys for algorithms 15, 30 and 31 — and Norn's keys the reference's, on A.3.2 and on random secrets of SHA-256 and SHA-512 length | ✅ |
-| §3, §4 | The record on the wire — request entries and their Data Length, the server's selection, the client's refusals — and a key exchange over SSH with Norn | ⬜ |
+| §3.3, §5.1 | The client's request: one critical record whose entries fill its body, Data Length 0 for `0x0001` and `0x0002`, `0x0002` always — after `0x0001` where the client has the exporter, as in Appendix B — and no record 1024 over SSH | ✅ |
+| §3.4, §4.1 | The server: Bad Request for no record, two records, an empty body, entries that do not fill it, data for `0x0001` or `0x0002` wherever it stands, and no method it supports; unknown methods skipped by their Data Length, also where their data read as an entry; the client's order deciding; new data for every exchange on a connection; one critical record in the response | ✅ |
+| §4.1 rule 6, §5 | The keys the server seals into its cookies: an NTS request under the C2S key derived here is answered under the S2C key derived here — both methods, algorithms 15, 30 and 31, with record 1024 neither echoed nor heeded; keys under chrony's context for 30 as the control | ✅ |
+| §4.2, §5 | The client: aborts on no record, two, a method it did not offer, and Method Data of another length, as a protocol error and not the server's; takes an Error response as the server's error; derives the keys of §5.3 from the secret of a response, and those of the server end of the connection from its nonce | ✅ |
+| §4.1, §4.2, §6.5 | Over TLS: the server answers the record with Unrecognized Critical Record, through .NET's TLS; the client neither sends it nor accepts it | ✅ |
 
 ### Transport and PKI
 
@@ -239,11 +252,6 @@ streams out, which is the whole of what a CLI promises.
 
 Not covered yet, in rough order of value:
 
-- **NTS-KE over SSH on the wire** — the key derivation of Norn and Hermod is checked against the
-  specification (see [above](#nts-ke-over-ssh--the-ssh-key-binding-record)); the record on the
-  wire is not yet. Next is driving it from the raw NTS-KE codec through Hermod's SSH: entries a
-  server must skip by their Data Length, the requests it must refuse with Bad Request, and the
-  responses a client must abort on (Sections 4.1 and 4.2).
 - **RFC 8633's remaining operational advice** — § 5.1's information leakage (an access list on
   who may query at all), and § 5.2's panic threshold, which needs a Norn that steers a clock
   rather than only measuring one. § 5.4, the rate limiting and the kiss codes, is done.
@@ -306,9 +314,11 @@ build/CommonTestSettings.props           shared MSBuild settings for every test 
 src/NTSConformance.Core/                 the harness
   RawNtp/                                independent RFC 5905 + 7822 codec, and AES-SIV
   RawNtsKe/                              independent RFC 8915 §4 record codec, a raw client, a
-                                         scripted server that keeps what the client sent, and
-                                         HKDF and the key derivation of NTS-KE over SSH
-  Fixtures/                              Norn and chronyd server fixtures, certificates, DebugX capture
+                                         scripted server that keeps what the client sent, both
+                                         also over SSH, and HKDF and the key derivation of
+                                         NTS-KE over SSH
+  Fixtures/                              Norn (with an SSH listener where asked) and chronyd server
+                                         fixtures, certificates, DebugX capture
   TestClock.cs                           a TimeProvider the test controls: frozen, or displaced
   UdpRelayProbe.cs                       a loopback socket that records who sent what, and can pass it on
   TestEnvironment.cs                     capability probing, Assert.Ignore gating
@@ -317,8 +327,10 @@ conformance/
   NTSConformance.WireFormat.Tests/       RFC 5905 header, RFC 7822 framing, timestamps, the registries
   NTSConformance.Crypto.Tests/           RFC 5297 / 4493 / 5869 vectors, differential vs reference,
                                          the SSH Key Binding vectors, and Norn and Hermod against them
-  NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, server negotiation, warnings, certificates
-  NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, where its query goes
+  NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, server negotiation, warnings, certificates,
+                                         the SSH Key Binding record against the server
+  NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, where its query goes,
+                                         the SSH Key Binding record against the client
   NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock, interleaved mode
   NTSConformance.Cookies.Tests/          RFC 8915 §6 — opacity, forgery, rotation
   NTSConformance.CLI.Tests/              the `norn` executable, run as a process

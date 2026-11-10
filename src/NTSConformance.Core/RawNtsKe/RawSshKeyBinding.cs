@@ -54,6 +54,114 @@ public static class RawSshKeyBinding
     public const Byte   S2C                      = 0x01;
 
 
+    /// <summary>
+    /// Method 0x0001, SSH Exporter (Section 3.2): no data in a request, exporter_nonce in a response.
+    /// </summary>
+    public const UInt16 MethodSshExporter        = 0x0001;
+
+    /// <summary>
+    /// Method 0x0002, Transported Secret (Section 3.2), which every client and server implements:
+    /// no data in a request, nts_ke_secret in a response.
+    /// </summary>
+    public const UInt16 MethodTransportedSecret  = 0x0002;
+
+
+    #region Section 3 — the bodies of a request and a response
+
+    /// <summary>
+    /// One entry of a request (Section 3.3): Method ID, Data Length and the data, the two
+    /// numbers in network byte order.
+    /// </summary>
+    public static Byte[] Entry(UInt16 methodId, ReadOnlySpan<Byte> data = default)
+    {
+
+        var entry = new Byte[4 + data.Length];
+
+        BinaryPrimitives.WriteUInt16BigEndian(entry.AsSpan(0), methodId);
+        BinaryPrimitives.WriteUInt16BigEndian(entry.AsSpan(2), (UInt16) data.Length);
+        data.CopyTo(entry.AsSpan(4));
+
+        return entry;
+
+    }
+
+
+    /// <summary>
+    /// The body of a request offering the given methods, most preferred first, none with data.
+    /// </summary>
+    public static Byte[] RequestBody(params UInt16[] methodIds)
+        => [ .. methodIds.SelectMany(methodId => Entry(methodId)) ];
+
+
+    /// <summary>
+    /// The body of a response (Section 3.4): the selected Method ID and its data.
+    /// </summary>
+    public static Byte[] ResponseBody(UInt16 methodId, ReadOnlySpan<Byte> methodData)
+    {
+
+        var body = new Byte[2 + methodData.Length];
+
+        BinaryPrimitives.WriteUInt16BigEndian(body.AsSpan(0), methodId);
+        methodData.CopyTo(body.AsSpan(2));
+
+        return body;
+
+    }
+
+
+    /// <summary>
+    /// Read the body of a request as Section 3.3 has it: one or more entries that fill it
+    /// exactly. Says what is wrong where it is not that; whether a method may carry data is a
+    /// question for the caller.
+    /// </summary>
+    public static Boolean TryReadRequestBody(Byte[]                                     body,
+                                             out List<(UInt16 MethodId, Byte[] Data)>?  entries,
+                                             out String?                                errorResponse)
+    {
+
+        entries        = null;
+        errorResponse  = null;
+
+        if (body.Length == 0)
+        {
+            errorResponse = "The body holds no entry.";
+            return false;
+        }
+
+        var read   = new List<(UInt16, Byte[])>();
+        var offset = 0;
+
+        while (offset < body.Length)
+        {
+
+            if (body.Length - offset < 4)
+            {
+                errorResponse = $"{body.Length - offset} octet(s) after the last whole entry, too few for another.";
+                return false;
+            }
+
+            var methodId    = BinaryPrimitives.ReadUInt16BigEndian(body.AsSpan(offset));
+            var dataLength  = BinaryPrimitives.ReadUInt16BigEndian(body.AsSpan(offset + 2));
+
+            if (body.Length - offset - 4 < dataLength)
+            {
+                errorResponse = $"The entry of method 0x{methodId:x4} says {dataLength} octet(s) of data, and {body.Length - offset - 4} remain.";
+                return false;
+            }
+
+            read.Add((methodId, body[(offset + 4)..(offset + 4 + dataLength)]));
+
+            offset += 4 + dataLength;
+
+        }
+
+        entries = read;
+        return true;
+
+    }
+
+    #endregion
+
     #region SSH encodings — RFC 4251 §5
 
     /// <summary>

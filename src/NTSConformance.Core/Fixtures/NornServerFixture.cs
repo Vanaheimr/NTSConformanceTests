@@ -1,6 +1,8 @@
 using org.GraphDefined.Vanaheimr.Hermod;
 using org.GraphDefined.Vanaheimr.Hermod.DNS;
 using org.GraphDefined.Vanaheimr.Hermod.HTTP;
+using org.GraphDefined.Vanaheimr.Hermod.SSH;
+using org.GraphDefined.Vanaheimr.Hermod.SSH.Client;
 using org.GraphDefined.Vanaheimr.Norn.NTS;
 
 namespace NTSConformance.Core.Fixtures;
@@ -47,6 +49,12 @@ public sealed class NornServerFixture : IAsyncDisposable
 
 
     /// <summary>
+    /// The TCP port of the server's SSH listener for NTS-KE over SSH, when it was given one.
+    /// </summary>
+    public IPPort? SSHPort { get; private init; }
+
+
+    /// <summary>
     /// Start a server on free ports.
     /// </summary>
     /// <param name="masterKeyLifetime">Shorten to exercise rotation.</param>
@@ -89,6 +97,10 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// narrower than what it can perform; naming one is how a test reaches an algorithm that is
     /// implemented but not yet offered.
     /// </param>
+    /// <param name="sshClientKey">
+    /// Give the server an SSH listener for NTS-KE over SSH as well, which this key alone may log
+    /// in to — see <see cref="ConnectSshAsync"/>.
+    /// </param>
     /// <param name="omitPortNegotiation">
     /// Advertise the host without a port, so the key exchange sends an NTPv4 Server Negotiation
     /// record and no NTPv4 Port Negotiation record.
@@ -112,12 +124,19 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     InterleavedModePolicy? interleavedMode         = null,
                                                     NTPRateLimiter?  rateLimiter                   = null,
                                                     Boolean          omitPortNegotiation           = false,
-                                                    IEnumerable<AEADAlgorithms>? aeadAlgorithms    = null)
+                                                    IEnumerable<AEADAlgorithms>? aeadAlgorithms    = null,
+                                                    ISshHostKey?     sshClientKey                  = null)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 
                var host   = externalHostName  ?? "localhost";
                var port   = advertisedNTPPort ?? udpPort;
+
+               IPPort? sshPort = null;
+
+               if (sshClientKey is not null)
+                   using (var reservation = FreePort.ReserveTcp())
+                       sshPort = reservation.Port;
 
                var server = new NTSServer(
                                 NTSKEPort:                     tcpPort,
@@ -135,12 +154,16 @@ public sealed class NornServerFixture : IAsyncDisposable
                                 ClockResolution:               clockResolution,
                                 InterleavedMode:               interleavedMode,
                                 RateLimiter:                   rateLimiter,
-                                SupportedAEADAlgorithms:       aeadAlgorithms
+                                SupportedAEADAlgorithms:       aeadAlgorithms,
+                                SSHPort:                       sshPort,
+                                SSHAuthenticator:              sshClientKey is null
+                                                                   ? null
+                                                                   : SshUserAuthenticator.ForAuthorizedKeys(sshClientKey.PublicKeyBlob)
                             );
 
                await server.Start();
 
-               return new NornServerFixture(server, tcpPort, udpPort) { Certificate = certificate };
+               return new NornServerFixture(server, tcpPort, udpPort) { Certificate = certificate, SSHPort = sshPort };
 
            });
 
@@ -189,6 +212,32 @@ public sealed class NornServerFixture : IAsyncDisposable
                 OfferedAEADAlgorithms:       aeadAlgorithms,
                 CompliantAES128GCMSIVExporterContext: compliantExporterContext,
                 TimeProvider:                timeProvider);
+
+
+    /// <summary>
+    /// An SSH connection to the server's listener for NTS-KE over SSH, with the given key and the
+    /// server's host key pinned — the whole of the server's authentication over SSH.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The server was started without one.</exception>
+    public ValueTask<SshClient> ConnectSshAsync(ISshHostKey        clientKey,
+                                                CancellationToken  cancellationToken = default)
+    {
+
+        if (SSHPort is not { } sshPort)
+            throw new InvalidOperationException("The server was started without an SSH listener: give StartAsync an sshClientKey.");
+
+        var hostKey = Server.SSHHostKeys[0].PublicKeyBlob;
+
+        return SshClient.ConnectAsync("127.0.0.1",
+                                      sshPort.ToUInt16(),
+                                      new SshClientOptions {
+                                          Username       = "ntske",
+                                          Credentials    = [ clientKey ],
+                                          VerifyHostKey  = blob => blob.AsSpan().SequenceEqual(hostKey)
+                                      },
+                                      cancellationToken);
+
+    }
 
 
     /// <summary>

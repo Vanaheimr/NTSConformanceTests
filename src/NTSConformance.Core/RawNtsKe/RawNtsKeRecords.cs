@@ -21,6 +21,13 @@ public static class RawNtsKeRecordTypes
     /// </summary>
     public const UInt16 CompliantAes128GcmSivExporterContext = 1024;
 
+    /// <summary>
+    /// SSH Key Binding, the record of NTS-KE over SSH. Its value is still TBD with IANA:
+    /// 16386 (0x4002) is the provisional one from the Private or Experimental Use range that
+    /// Norn uses until the assignment, and this the one place to change when it comes.
+    /// </summary>
+    public const UInt16 SshKeyBinding = 16386;
+
 
     public static String Describe(UInt16 recordType)
 
@@ -34,7 +41,8 @@ public static class RawNtsKeRecordTypes
                Ntpv4ServerNegotiation                => "NTPv4 Server Negotiation",
                Ntpv4PortNegotiation                  => "NTPv4 Port Negotiation",
                CompliantAes128GcmSivExporterContext  => "Compliant AES-128-GCM-SIV Exporter Context",
-               _                                     => $"unknown ({recordType})"
+               SshKeyBinding                         => "SSH Key Binding",
+               _                                    => $"unknown ({recordType})"
            };
 
 }
@@ -165,6 +173,14 @@ public sealed record RawNtsKeRecord(Boolean IsCritical, UInt16 RecordType, Byte[
     /// </summary>
     public static RawNtsKeRecord CompliantAes128GcmSivExporterContext(Boolean isCritical = false)
         => new (isCritical, RawNtsKeRecordTypes.CompliantAes128GcmSivExporterContext, []);
+
+    /// <summary>
+    /// SSH Key Binding, with the body as given: the entries of a request, or the selection of a
+    /// response — see <see cref="RawSshKeyBinding"/>. Critical unless a test says otherwise, as
+    /// Section 3.1 of its specification requires in both directions.
+    /// </summary>
+    public static RawNtsKeRecord SshKeyBinding(Byte[] body, Boolean isCritical = true)
+        => new (isCritical, RawNtsKeRecordTypes.SshKeyBinding, body);
 
 
     private static Byte[] UInt16Body(params UInt16[] values)
