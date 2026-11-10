@@ -12,7 +12,9 @@ Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC), **RFC 3686** (AES-CT
 (port randomization), **RFC 9748** (the NTP registries), **RFC 9769** (interleaved modes),
 **RFC 8633** (the NTP BCP), **RFC 9525** (service identity in TLS)
 and **RFC 7384** (security requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is asserted,
-what is planned, and what is deliberately out of scope.
+what is planned, and what is deliberately out of scope. It also recomputes the test vectors of
+the specification of the **SSH Key Binding** record, the key derivation of NTS-KE over SSH — see
+[NTS-KE over SSH](#nts-ke-over-ssh--the-ssh-key-binding-record).
 
 ## Why a second implementation
 
@@ -25,6 +27,8 @@ That matters because a suite built on the code under test can only prove self-co
 Here, a disagreement between the two is evidence, and the reference is itself held to the
 published RFC 5297 and RFC 4493 vectors before anything is concluded from it
 (`RawAesSivReferenceTests`, including every S2V intermediate from RFC 5297 Appendix A).
+`RawHkdf` is built the same way: on the BCL's HMAC, where Norn and Hermod use its HKDF class,
+and held to the RFC 5869 vectors (`RawHkdfReferenceTests`).
 
 The reference codec is also deliberately capable of emitting **malformed** packets —
 overstated lengths, missing padding, duplicate fields, trailing octets — which is what
@@ -49,7 +53,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state on 5 November 2026: **595 tests green** in the hermetic gate (Norn's own 117
+Verified state on 10 November 2026: **613 tests green** in the hermetic gate (Norn's own 117
 included), and no open defect — the one `KnownIssue` this suite has ever carried,
 AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
@@ -181,6 +185,26 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 8452 | AEAD_AES_256_GCM_SIV (31): implemented and vector-correct, never run against another implementation, so not offered | ⬜ |
 | 5116, 5282, 6655, 7253, 8439 | The other AEADs in the IANA registry — enumerated so they can be named in negotiation, none implemented | — |
 
+### NTS-KE over SSH — the SSH Key Binding record
+
+The record is specified in
+[nts-ke-ssh-key-binding.md](https://github.com/OpenChargingTechnology/Whitepapers/blob/master/NTS-over-SSH/nts-ke-ssh-key-binding.md)
+(version 1.0), for registration with IANA under Specification Required, which asks for a
+specification detailed enough for independent implementations to interoperate. Its test vectors
+came from Norn, the only implementation there is; a vector computed by the code it checks proves
+only that the code agrees with itself. So `RawSshKeyBinding` derives the keys from the text of
+its Section 5 alone, on `RawHkdf`, and `SshKeyBindingVectorTests` recomputes every vector of its
+Appendix A, each intermediate on its own. Norn's own suite checks that Norn produces A.2 and A.3.2,
+and Hermod's that its exporter produces A.3.1; where this suite is green, all three agree.
+
+| Section | Focus | |
+|---|---|:--:|
+| §5.1, A.1 | The HKDF info: the label and the RFC 8915 §5.1 context, each as an SSH string with its length in front | 🟡 |
+| §5.3, A.2 | Method `0x0002`: HKDF-Expand-SHA256 with `nts_ke_secret` as the PRK, algorithms 15, 30 and 31, both directions | 🟡 |
+| §5.2, A.3.1 | Method `0x0001` from the key exchange: `exporter_secret`, PRK and keys of all four vectors — K as an mpint, as an mpint with a leading zero octet, as a string, and on SHA-512 — and the two K taken from RFC 7748, encoded here as mpints | 🟡 |
+| §5.2, A.3.2 | Method `0x0001` from `exporter_secret` on: PRK and keys for algorithms 15, 30 and 31 | 🟡 |
+| §3, §4 | The record on the wire — request entries and their Data Length, the server's selection, the client's refusals — and a key exchange over SSH with Norn | ⬜ |
+
 ### Transport and PKI
 
 | RFC | Focus | |
@@ -210,6 +234,12 @@ streams out, which is the whole of what a CLI promises.
 
 Not covered yet, in rough order of value:
 
+- **NTS-KE over SSH against Norn** — the key derivation is checked against the specification
+  (see [above](#nts-ke-over-ssh--the-ssh-key-binding-record)), Norn itself not yet: `libs/Norn`
+  is pinned before its SSH work. Next are a differential of Norn's two exporters against
+  `RawSshKeyBinding`, and the record on the wire, driven from the raw NTS-KE codec through
+  Hermod's SSH: entries a server must skip by their Data Length, the requests it must refuse
+  with Bad Request, and the responses a client must abort on (Sections 4.1 and 4.2).
 - **RFC 8633's remaining operational advice** — § 5.1's information leakage (an access list on
   who may query at all), and § 5.2's panic threshold, which needs a Norn that steers a clock
   rather than only measuring one. § 5.4, the rate limiting and the kiss codes, is done.
@@ -271,8 +301,9 @@ Deliberately not covered, and why:
 build/CommonTestSettings.props           shared MSBuild settings for every test project
 src/NTSConformance.Core/                 the harness
   RawNtp/                                independent RFC 5905 + 7822 codec, and AES-SIV
-  RawNtsKe/                              independent RFC 8915 §4 record codec, a raw client, and
-                                         a scripted server that keeps what the client sent
+  RawNtsKe/                              independent RFC 8915 §4 record codec, a raw client, a
+                                         scripted server that keeps what the client sent, and
+                                         HKDF and the key derivation of NTS-KE over SSH
   Fixtures/                              Norn and chronyd server fixtures, certificates, DebugX capture
   TestClock.cs                           a TimeProvider the test controls: frozen, or displaced
   UdpRelayProbe.cs                       a loopback socket that records who sent what, and can pass it on
@@ -280,7 +311,8 @@ src/NTSConformance.Core/                 the harness
   Wsl.cs                                 WSL bridge on Windows, /bin/sh natively on GNU/Linux
 conformance/
   NTSConformance.WireFormat.Tests/       RFC 5905 header, RFC 7822 framing, timestamps, the registries
-  NTSConformance.Crypto.Tests/           RFC 5297 / 4493 vectors, differential vs reference
+  NTSConformance.Crypto.Tests/           RFC 5297 / 4493 / 5869 vectors, differential vs reference,
+                                         the SSH Key Binding vectors
   NTSConformance.NTSKE.Tests/            RFC 8915 §4 records, server negotiation, warnings, certificates
   NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, where its query goes
   NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock, interleaved mode
