@@ -430,7 +430,7 @@ Two workflows, the same shape as the SSH and DNS suites:
 
 ## Prerequisites
 
-The .NET 10 SDK, and the three submodules checked out:
+The .NET 11 SDK, and the three submodules checked out:
 
 ```bash
 git submodule update --init --recursive
