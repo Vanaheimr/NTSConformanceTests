@@ -55,7 +55,7 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state on 10 November 2026: **818 tests green** in the hermetic gate (Norn's own 231
+Verified state on 11 November 2026, on .NET 11: **820 tests green** in the hermetic gate (Norn's own 233
 included), and no open defect — the one `KnownIssue` this suite has ever carried,
 AES-128-GCM-SIV against chronyd, was resolved and its
 cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
