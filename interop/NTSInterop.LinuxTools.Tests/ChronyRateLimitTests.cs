@@ -127,7 +127,10 @@ public class ChronyRateLimitTests
                 // Short, so chronyd hears it more than once inside the run. On a real server this
                 // would be far longer; here the point is to give the client every chance to obey.
                 KissInterval:        TimeSpan.FromSeconds(4),
-                MaxKissesPerSecond:  withKisses ? 8 : 0);
+                MaxKissesPerSecond:  withKisses ? 8 : 0,
+                // No leak: the two runs are meant to differ in the kiss alone, and one refusal
+                // in four answered at random would be a second difference between them.
+                Leak:                0);
 
 
     private async Task<(Int32? Poll, Int64 Kisses, String Output)> Measure(Boolean withKisses)

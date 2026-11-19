@@ -145,6 +145,15 @@ public class ServeTests
     /// <summary>
     /// <c>--rate-limit</c> reaches the limiter.
     /// </summary>
+    /// <remarks>
+    /// The limiter behind <c>norn serve</c> leaks: one in four requests over the limit is
+    /// answered anyway, at random, and the command line has no option to switch that off
+    /// (<c>RateLimiterTests</c> in the server tests say why the leak exists). So "the second request is refused" holds only three times in four. What does
+    /// hold every time is that the first refusal, whenever it comes, is a RATE kiss — the
+    /// address has never been kissed and the global budget is full. Up to twenty requests
+    /// after the burst are sent to reach it: nineteen leaks in a row is one chance in about
+    /// 2.7 × 10^11.
+    /// </remarks>
     [Test]
     public void Serve_RateLimitsWhenAskedTo()
     {
@@ -157,16 +166,31 @@ public class ServeTests
             var first  = RawNtpExchange.TryExchange(RawNtpPacket.ClientRequest(), "127.0.0.1", ntpPort,
                                                     timeout: TimeSpan.FromSeconds(5));
 
-            var second = RawNtpExchange.TryExchange(RawNtpPacket.ClientRequest(), "127.0.0.1", ntpPort,
-                                                    timeout: TimeSpan.FromSeconds(5));
+            RawNtpPacket? refusal = null;
+
+            for (var i = 0; i < 20 && refusal is null; i++)
+            {
+
+                var next = RawNtpExchange.TryExchange(RawNtpPacket.ClientRequest(), "127.0.0.1", ntpPort,
+                                                      timeout: TimeSpan.FromSeconds(5));
+
+                // An answer that is not a kiss is the leak, and the loop goes on.
+                if (next is null)
+                    Assert.Fail($"the first refusal has to be a kiss, and it was silence\n{server.Snapshot}");
+
+                if (next!.IsKissOfDeath)
+                    refusal = next;
+
+            }
 
             Assert.Multiple(() => {
 
                 Assert.That(first?.IsKissOfDeath, Is.False,
                             $"the first request is inside the burst\n{server.Snapshot}");
 
-                Assert.That(second?.KissCode, Is.EqualTo("RATE"),
-                            $"the second is not\n{server.Snapshot}");
+                Assert.That(refusal?.KissCode, Is.EqualTo("RATE"),
+                            $"twenty requests past a burst of one, and none was refused with a " +
+                            $"kiss\n{server.Snapshot}");
 
             });
 
