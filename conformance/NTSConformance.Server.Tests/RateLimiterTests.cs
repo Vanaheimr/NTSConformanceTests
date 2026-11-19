@@ -25,6 +25,13 @@ namespace NTSConformance.Server.Tests;
 /// per-client throttling is worth nothing — and that the state behind all of it is capped in
 /// memory and in the work of enforcing the cap.
 /// </para>
+/// <para>
+/// Every test that asserts what happens to a request over the limit builds its limiter with
+/// <c>Leak: 0</c>. Norn answers one in 2^Leak of those requests anyway, at random (one in four
+/// by default, as chrony's <c>ratelimit leak</c> does), and with that on, "dropped" and "kissed"
+/// are only ever probable. The leak is a property of its own and has tests of its own, at the
+/// end of this class.
+/// </para>
 /// </summary>
 [TestFixture]
 public class RateLimiterTests
@@ -51,7 +58,8 @@ public class RateLimiterTests
         var clock    = new ManualClock();
         var limiter  = new NTPRateLimiter(MinimumInterval:  TimeSpan.FromSeconds(2),
                                           Burst:            4,
-                                          TimeProvider:     clock);
+                                          TimeProvider:     clock,
+                                          Leak:             0);
 
         var address  = Address(0);
 
@@ -122,7 +130,8 @@ public class RateLimiterTests
         var clock    = new ManualClock();
         var limiter  = new NTPRateLimiter(MinimumInterval:  TimeSpan.FromSeconds(2),
                                           Burst:            4,
-                                          TimeProvider:     clock);
+                                          TimeProvider:     clock,
+                                          Leak:             0);
 
         var address  = Address(0);
 
@@ -187,7 +196,8 @@ public class RateLimiterTests
         var limiter  = new NTPRateLimiter(MinimumInterval:  TimeSpan.FromSeconds(2),
                                           Burst:            1,
                                           KissInterval:     TimeSpan.FromSeconds(30),
-                                          TimeProvider:     clock);
+                                          TimeProvider:     clock,
+                                          Leak:             0);
 
         var address  = Address(0);
 
@@ -233,7 +243,8 @@ public class RateLimiterTests
         var limiter  = new NTPRateLimiter(MinimumInterval:  TimeSpan.FromMinutes(10),
                                           Burst:            1,
                                           KissInterval:     TimeSpan.FromSeconds(30),
-                                          TimeProvider:     clock);
+                                          TimeProvider:     clock,
+                                          Leak:             0);
 
         var address  = Address(0);
 
@@ -316,7 +327,8 @@ public class RateLimiterTests
                                           Burst:               1,
                                           KissInterval:        TimeSpan.Zero,
                                           MaxKissesPerSecond:  4,
-                                          TimeProvider:        clock);
+                                          TimeProvider:        clock,
+                                          Leak:                0);
 
         var address  = Address(0);
 
@@ -359,7 +371,8 @@ public class RateLimiterTests
         var limiter  = new NTPRateLimiter(MinimumInterval:     TimeSpan.FromSeconds(2),
                                           Burst:               1,
                                           MaxKissesPerSecond:  0,
-                                          TimeProvider:        clock);
+                                          TimeProvider:        clock,
+                                          Leak:                0);
 
         var address  = Address(0);
 
@@ -470,7 +483,8 @@ public class RateLimiterTests
         var limiter  = new NTPRateLimiter(MinimumInterval:  TimeSpan.FromMinutes(10),
                                           Burst:            1,
                                           MaxClients:       3,
-                                          TimeProvider:     clock);
+                                          TimeProvider:     clock,
+                                          Leak:             0);
 
         var keeper   = Address(0);
 
@@ -543,6 +557,106 @@ public class RateLimiterTests
                     $"the signature of a scan: {small:F0}/s at 256 entries against {large:F0}/s " +
                     $"at 16384. The size of that table is what a flood of forged addresses " +
                     $"controls.");
+
+    }
+
+    #endregion
+
+
+    #region The limit cannot be turned against a client
+
+    /// <summary>
+    /// A flood sent under a client's address still leaves the client some answers.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The limiter keys on a source address nobody has verified, so whoever writes a client's
+    /// address into a stream of requests spends that client's budget. Without a leak the client
+    /// would get nothing back for as long as the stream lasted: the limiter would be the attack.
+    /// With the default leak, one in four requests over the limit is answered anyway, chosen at
+    /// random so that the flood cannot arrange for the client's own requests to be the dropped ones.
+    /// </para>
+    /// <para>
+    /// The other half matters as much: the leak must stay a fraction, or the flood is answered
+    /// wholesale and the limit is gone. Hence two bounds, not one. They are deliberately wide —
+    /// 4,000 draws at one in four have a standard deviation of about 27 around 1,000, so a band
+    /// from 500 to 2,000 is eighteen deviations either side and will not fail by chance in the
+    /// lifetime of this suite, while still telling one in four apart from none and from all.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void AFloodUnderAClientsAddress_StillLeavesTheClientSomeAnswers()
+    {
+
+        var clock    = new ManualClock();
+        var limiter  = new NTPRateLimiter(MinimumInterval:  TimeSpan.FromMinutes(10),
+                                          Burst:            1,
+                                          TimeProvider:     clock);
+
+        var address  = Address(0);
+
+        limiter.Check(address);   // spends the only token
+
+        const Int32 overTheLimit = 4000;
+
+        var answered = 0;
+
+        // No time passes, so not one of these is inside the limit.
+        for (var i = 0; i < overTheLimit; i++)
+        {
+            if (limiter.Check(address) == RateLimitDecision.Answer)
+                answered++;
+        }
+
+        Assert.Multiple(() => {
+
+            Assert.That(answered,
+                        Is.GreaterThanOrEqualTo(overTheLimit / 8),
+                        $"{answered} of {overTheLimit} requests over the limit were answered: a " +
+                        $"flood under this address would shut its owner out");
+
+            Assert.That(answered,
+                        Is.LessThanOrEqualTo(overTheLimit / 2),
+                        $"{answered} of {overTheLimit} requests over the limit were answered: " +
+                        $"that is no longer a limit");
+
+        });
+
+    }
+
+
+    /// <summary>
+    /// A leak of zero answers nothing over the limit.
+    /// </summary>
+    /// <remarks>
+    /// The setting every other test in this class relies on to make its outcome certain, and so
+    /// asserted here rather than assumed.
+    /// </remarks>
+    [Test]
+    public void ALeakOfZero_AnswersNothingOverTheLimit()
+    {
+
+        var clock    = new ManualClock();
+        var limiter  = new NTPRateLimiter(MinimumInterval:  TimeSpan.FromMinutes(10),
+                                          Burst:            1,
+                                          TimeProvider:     clock,
+                                          Leak:             0);
+
+        var address  = Address(0);
+
+        limiter.Check(address);
+
+        var answered = 0;
+
+        for (var i = 0; i < 1000; i++)
+        {
+            if (limiter.Check(address) == RateLimitDecision.Answer)
+                answered++;
+        }
+
+        Assert.That(answered,
+                    Is.Zero,
+                    "with the leak switched off, a request over the limit is never answered");
 
     }
 

@@ -325,7 +325,8 @@ public class AccessListTests
     /// </summary>
     /// <remarks>
     /// A burst of one, so the second request of either client is one the limiter refuses,
-    /// and the first refusal of an address draws a RATE kiss.
+    /// and the first refusal of an address draws a RATE kiss. No leak, so that the refusal is
+    /// certain rather than three times in four.
     /// </remarks>
     [TestCaseSource(nameof(Lists))]
     public async Task NTP_TheDeniedAddress_DrawsNoKiss_WhereTheOtherDoes(Case Case)
@@ -334,7 +335,8 @@ public class AccessListTests
         await using var fixture = await StartAsync(Case.List,
                                                    new NTPRateLimiter(MinimumInterval:  TimeSpan.FromSeconds(100),
                                                                       Burst:            1,
-                                                                      KissInterval:     TimeSpan.FromMinutes(5)));
+                                                                      KissInterval:     TimeSpan.FromMinutes(5),
+                                                                      Leak:             0));
 
         var fromTheDenied   = Enumerable.Range(0, 2).Select(_ => AskTheTime(fixture, Case.Denied, Silence)).ToArray();
         var fromTheAllowed  = Enumerable.Range(0, 2).Select(_ => AskTheTime(fixture, Case.Allowed)).ToArray();

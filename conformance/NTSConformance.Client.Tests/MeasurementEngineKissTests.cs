@@ -86,7 +86,7 @@ public class MeasurementEngineKissTests
 
 
     /// <summary>
-    /// After a "RATE", the engine waits out the interval the server asked for, then measures.
+    /// After a "RATE", the engine waits out its slower interval, then measures.
     /// </summary>
     /// <remarks>
     /// The second half is the interesting one. A back-off that never expires is a demobilization
@@ -101,8 +101,14 @@ public class MeasurementEngineKissTests
 
         var state  = engine.AccessStateFor(server.Hostname);
 
-        // Poll 4 is sixteen seconds, so the wait is short enough to step over rather than sit
-        // through: the state is driven from a time the caller supplies.
+        // Where the engine starts a server is its own business — Norn starts it at the poll
+        // exponent of its measurement interval — so the kiss is judged against that, not
+        // against a number written down here.
+        var before = state.PollExponent;
+
+        // Poll 4 is sixteen seconds, and at or below where any client starts: the kiss asks for
+        // nothing the client is not doing already. The state is driven from a time the caller
+        // supplies, an hour back, so the wait is stepped over rather than sat through.
         state.Apply(new NTPKissOfDeath("RATE", 4), DateTimeOffset.UtcNow - TimeSpan.FromHours(1));
 
         var result = await engine.MeasureSingleServer(server, Guid.NewGuid(), new DNSClient());
@@ -110,14 +116,14 @@ public class MeasurementEngineKissTests
         Assert.Multiple(() => {
 
             Assert.That(state.PollExponent,
-                        Is.EqualTo(5),
-                        "the kiss asked for 4 and the client was already there, so § 7.4 b's " +
-                        "'continue to reduce' takes it one step further");
+                        Is.GreaterThan(before),
+                        "the kiss asked for no more than the client already kept, and § 7.4 b's " +
+                        "'reduce its polling interval' still has to make it slower");
 
             Assert.That(result.Skipped,
                         Is.False,
-                        "an hour has passed since a thirty-two second back-off, so this round " +
-                        "should have gone ahead");
+                        "an hour has passed since a back-off of a few minutes at most, so this " +
+                        "round should have gone ahead");
 
         });
 

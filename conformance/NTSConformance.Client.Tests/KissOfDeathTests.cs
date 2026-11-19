@@ -23,8 +23,8 @@ namespace NTSConformance.Client.Tests;
 /// <para>
 /// Two defences make the difference. A kiss is only believed if it echoes the request, so an
 /// off-path attacker who cannot see the request cannot forge one. And the poll value inside it is
-/// read as a suggestion with a ceiling, so the worst a kiss that does get through can do is halve
-/// the polling rate — not stop it.
+/// never taken at face value, only up to a ceiling, so the worst a kiss that does get through can
+/// do is slow the polling — not stop it.
 /// </para>
 /// </summary>
 [TestFixture]
@@ -234,13 +234,23 @@ public class KissOfDeathTests
 
 
     /// <summary>
-    /// A RATE kiss slows this client down, and by the amount the server asked for.
+    /// A RATE kiss slows this client down, and at once.
     /// </summary>
+    /// <remarks>
+    /// § 7.4 b: the client "MUST immediately reduce its polling interval". By how much is left
+    /// open on purpose — RFC 8633 § 5.4: "The mechanism to determine how much to increase the poll
+    /// interval value is undefined in [RFC5905]", and a client may take the server's poll value
+    /// only if it does not "simply accept any value". So what is asserted is what both RFCs
+    /// require: slower than before, and from now rather than from the next round. Not by how
+    /// much. Norn moves one step per kiss whatever the packet asks for; a client that adopted the
+    /// server's value up to the ceiling would pass this as well.
+    /// </remarks>
     [Test]
-    public void ARateKiss_SlowsTheClientToWhatTheServerAskedFor()
+    public void ARateKiss_SlowsTheClientDownAtOnce()
     {
 
-        var state = new NTPServerAccessState();
+        var state  = new NTPServerAccessState();
+        var before = state.PollInterval;
 
         Assert.That(state.MayQuery(Now), Is.True, "nothing has been said yet");
 
@@ -248,15 +258,16 @@ public class KissOfDeathTests
 
         Assert.Multiple(() => {
 
-            Assert.That(state.PollExponent, Is.EqualTo(9));
+            Assert.That(state.PollInterval,
+                        Is.GreaterThan(before),
+                        "a RATE kiss has to leave the client polling more slowly than before it");
 
-            Assert.That(state.PollInterval, Is.EqualTo(TimeSpan.FromSeconds(512)));
-
-            Assert.That(state.MayQuery(Now + TimeSpan.FromSeconds(511)),
+            Assert.That(state.MayQuery(Now + before),
                         Is.False,
-                        "§ 7.4 b: the reduction has to be immediate, not from the next round");
+                        "§ 7.4 b: the reduction has to be immediate — the interval the client " +
+                        "kept before the kiss is no longer enough, already for the next query");
 
-            Assert.That(state.MayQuery(Now + TimeSpan.FromSeconds(513)),
+            Assert.That(state.MayQuery(Now + state.PollInterval + TimeSpan.FromSeconds(1)),
                         Is.True,
                         "and it is a slower rate, not a shutdown");
 
@@ -287,9 +298,11 @@ public class KissOfDeathTests
 
         Assert.Multiple(() => {
 
+            // At most the ceiling, not exactly it: one step towards it is as conformant as a jump
+            // to it, and safer, since the packet that asks for 255 may well be forged.
             Assert.That(state.PollExponent,
-                        Is.EqualTo(NTPServerAccessState.DefaultMaximumPollExponent),
-                        "13, the value RFC 8633 § 5.4 names");
+                        Is.LessThanOrEqualTo(NTPServerAccessState.DefaultMaximumPollExponent),
+                        "13, the value RFC 8633 § 5.4 names, is as far as any kiss may take it");
 
             Assert.That(state.MayQuery(Now + TimeSpan.FromHours(3)),
                         Is.True,
@@ -364,6 +377,84 @@ public class KissOfDeathTests
                         "a year is not long enough: nothing the client can observe without " +
                         "sending packets will change the answer, so this ends when an operator " +
                         "says it does");
+
+        });
+
+    }
+
+
+    /// <summary>
+    /// On an NTS association, an authenticated "DENY" or "RSTR" stops the client as well.
+    /// </summary>
+    /// <remarks>
+    /// The case nobody disputes: the kiss carried an NTS authenticator that verified under the
+    /// S2C key, so it is the server speaking, and § 7.4 a applies as it does without NTS.
+    /// </remarks>
+    [TestCase("DENY")]
+    [TestCase("RSTR")]
+    public void OnAnNtsAssociation_AnAuthenticatedDenyOrRstr_StopsTheClient(String Code)
+    {
+
+        var state = new NTPServerAccessState();
+
+        state.Apply(new NTPKissOfDeath(Code, 4), Now, NTPKissTrust.Authenticated);
+
+        Assert.Multiple(() => {
+            Assert.That(state.Demobilized, Is.True);
+            Assert.That(state.MayQuery(Now + TimeSpan.FromDays(365)), Is.False);
+        });
+
+    }
+
+
+    /// <summary>
+    /// On an NTS association, an unauthenticated "DENY" or "RSTR" that passed the Unique
+    /// Identifier check stops the client too.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// RFC 8915 § 5.7 is explicit about what a KoD on an NTS association has to pass, and about
+    /// what follows once it has: the client "MUST verify that any KoD packets received from the
+    /// server contain the Unique Identifier extension field and that the Unique Identifier
+    /// matches that of an outstanding request. ... If this check passes, the client MUST comply
+    /// with Section 7.4 of RFC 5905 where required." § 7.4 a then requires the client to
+    /// demobilize and stop sending. The check it names is the Unique Identifier; an authenticator
+    /// is not among the conditions.
+    /// </para>
+    /// <para>
+    /// Norn asks for more on purpose (Norn ff0fef7, c822ba8): without an authenticator the kiss
+    /// could have been written by anyone who saw the request, so it costs one pause of
+    /// <see cref="NTPServerAccessState.UnauthenticatedDenyPause"/>, about two hours by default,
+    /// and then the client asks again. That is a defensible hardening and a deviation from a MUST
+    /// all the same, which is what this category records. <see cref="NTPServerAccessState.Apply"/>
+    /// only ever sees kisses the client has already accepted, so the Unique Identifier check of
+    /// § 5.7 is taken as passed here.
+    /// </para>
+    /// <para>
+    /// Setting <c>UnauthenticatedDenyPause</c> does not close the gap: zero ignores the kiss
+    /// entirely, and any other value still resumes.
+    /// </para>
+    /// </remarks>
+    [TestCase("DENY")]
+    [TestCase("RSTR")]
+    [Category(TestCategories.KnownIssue)]
+    public void OnAnNtsAssociation_AnUnauthenticatedDenyOrRstr_StillStopsTheClient(String Code)
+    {
+
+        var state = new NTPServerAccessState();
+
+        state.Apply(new NTPKissOfDeath(Code, 4), Now, NTPKissTrust.Unauthenticated);
+
+        Assert.Multiple(() => {
+
+            Assert.That(state.Demobilized,
+                        Is.True,
+                        "RFC 8915 § 5.7: a kiss that passed the Unique Identifier check MUST be " +
+                        "complied with as RFC 5905 § 7.4 a says, and that is demobilization");
+
+            Assert.That(state.MayQuery(Now + TimeSpan.FromDays(365)),
+                        Is.False,
+                        "§ 7.4 a: \"stop sending packets to that server\" — not for a pause, for good");
 
         });
 
@@ -458,7 +549,7 @@ public class KissOfDeathTests
     /// </para>
     /// <para>
     /// A burst of one, so the second query is the limited one and no test spends a poll interval
-    /// waiting.
+    /// waiting. No leak, or the second query would be answered one time in four.
     /// </para>
     /// </remarks>
     [Test]
@@ -469,7 +560,8 @@ public class KissOfDeathTests
         await using var fixture = await NornServerFixture.StartAsync(
                                             rateLimiter: new NTPRateLimiter(
                                                              MinimumInterval:  TimeSpan.FromMinutes(10),
-                                                             Burst:            1
+                                                             Burst:            1,
+                                                             Leak:             0
                                                          )
                                         );
 

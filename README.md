@@ -38,10 +38,11 @@ makes the negative tests possible at all.
 
 ## Results
 
-The suite found **20 RFC deviations**, including one critical: NTS cookies were neither
+The suite found **21 RFC deviations**, including one critical: NTS cookies were neither
 encrypted nor authenticated, exposing both session keys on the wire and allowing any forged
-cookie to be accepted. All of them are fixed in `libs/Norn`, each with a test that failed first
-and now guards against regression; the reasoning for each is in the commit that fixed it.
+cookie to be accepted. Twenty of them are fixed in `libs/Norn`, each with a test that failed
+first and now guards against regression; the reasoning for each is in the commit that fixed it.
+The twenty-first is open, and is described below.
 
 Two were reachable only from outside Norn — its own client and GnuTLS were lenient in exactly
 the places it was wrong — which is why the interop projects exist and not only the conformance
@@ -55,10 +56,19 @@ has always done. The same server then found a third of the same kind: the client
 algorithm it had never offered, which is a §4.1.5 violation by the peer and, on this side, the
 quiet undoing of the only setting that lets a deployment choose its primitives.
 
-Verified state on 11 November 2026, on .NET 11: **820 tests green** in the hermetic gate (Norn's own 233
-included), and no open defect — the one `KnownIssue` this suite has ever carried,
-AES-128-GCM-SIV against chronyd, was resolved and its
-cause is described under [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
+The open one is deliberate on Norn's side. Since November 2026 Norn answers a `DENY` or `RSTR`
+kiss on an NTS association that carries no valid authenticator with a pause of about two hours,
+not with the end of the association: anyone who saw the request could have written such a kiss.
+RFC 8915 §5.7 names one check a kiss on an NTS association has to pass, the Unique Identifier,
+and once it has, the client "MUST comply with Section 7.4 of RFC 5905", which for these two codes
+means demobilizing and sending nothing more. A hardening, and a deviation from a MUST all the
+same. It is pinned as this suite's `KnownIssue`, in
+`OnAnNtsAssociation_AnUnauthenticatedDenyOrRstr_StillStopsTheClient`.
+
+Verified state on 19 November 2026, on .NET 11: **911 tests green** in the hermetic gate (Norn's
+own 320 included), and one open deviation, the `KnownIssue` above. The one before it,
+AES-128-GCM-SIV against chronyd, was resolved and its cause is described under
+[The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
 Interoperability is confirmed against three independent implementations, in every direction:
 
@@ -113,6 +123,7 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | ✅ | implemented in Norn **and** verified by a passing test in this suite |
 | 🟡 | basics asserted here, or covered fully only by Norn's own test suite |
 | ⬜ | implemented in Norn, no test in this suite yet |
+| ❌ | a test here pins the RFC requirement, and Norn deviates from it — tagged `KnownIssue` |
 | — | not implemented in Norn; see [Planned](#planned) or [Out of scope](#out-of-scope) |
 
 ### NTPv4 — RFC 5905, RFC 7822
@@ -123,8 +134,9 @@ RFC says — a row is ✅ only when a test here would fail if the behaviour regr
 | 5905 §6 | 64-bit timestamp format: exact integer conversion down to 233 ps, the 16.16 short format, era wrap at 2036-02-07, zero as "unspecified" | ✅ |
 | 5905 §7.3 | Server clock characteristics: stratum 1 with `LOCL`, root delay and dispersion never falsely zero, precision from the server's own measured resolution | ✅ |
 | 5905 §7.4 | Kiss-o'-Death: stratum 0 with a readable kiss code, and never in answer to a plain NTP request | ✅ |
-| 5905 §7.4, 8633 §5.4 | Acting on a kiss code: `DENY` and `RSTR` demobilize the association, every `RATE` slows the client one step further, `X…` and unrecognized codes change nothing — and a kiss is believed only if it echoes the request | ✅ |
-| 8633 §5.4 | Server-side rate limiting: a token bucket per address that admits an `iburst`, a `RATE` kiss carrying the poll interval the server will serve, the kisses throttled per address and globally so a spoofed flood cannot be reflected, and the state capped in memory and in the cost of enforcing the cap | ✅ |
+| 5905 §7.4, 8633 §5.4 | Acting on a kiss code: `DENY` and `RSTR` demobilize the association, every `RATE` slows the client at once and again with each further kiss, never past poll 13, `X…` and unrecognized codes change nothing — and a kiss is believed only if it echoes the request | ✅ |
+| 8915 §5.7 | On an NTS association, a `DENY` or `RSTR` that passed the Unique Identifier check demobilizes it whether or not it carried an authenticator. Norn demobilizes on an authenticated one and only pauses on the other | ❌ |
+| 8633 §5.4 | Server-side rate limiting: a token bucket per address that admits an `iburst`, a `RATE` kiss carrying the poll interval the server will serve, the kisses throttled per address and globally so a spoofed flood cannot be reflected, one in four refusals answered all the same at random so a flood under a client's address cannot shut the client out, and the state capped in memory and in the cost of enforcing the cap | ✅ |
 | 8633 §5.4 | And chronyd adopts the exact poll exponent Norn's kiss asks for, having read the packet with none of Norn's code | ✅ |
 | 8633 §5.1 | An access list on who may query at all, everyone by default. A denied address gets no NTP answer and no kiss, because the list is asked before the rate limiter. Its NTS-KE connection is closed before the TLS handshake, and its SSH connection before the version exchange, so it never sees the host key. Cookies obtained from an allowed address do not get it answered either. The most specific network decides, and an IPv4 network matches an IPv4 client on a dual-stack socket, both where it allows and where it denies | ✅ |
 | 5905 §8 | Offset and delay arithmetic, recovered from randomly displaced client and server clocks; Norn's own `ClockOffset` cross-checked against this suite's | ✅ |
@@ -351,8 +363,9 @@ Everything that needs no network and no WSL — this is the gate, and it must st
 dotnet test NTSConformanceTests.slnx --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
 ```
 
-Include anything tagged `KnownIssue`. Nothing is at present, so this currently matches the run
-above; it is how an open deviation would be exercised once one is recorded:
+Include anything tagged `KnownIssue`. One deviation is at present, the unauthenticated
+`DENY`/`RSTR` under [Results](#results), and its two tests fail, as they should until Norn
+conforms:
 
 ```bash
 dotnet test NTSConformanceTests.slnx --filter "TestCategory!=Online&TestCategory!=WSL"
@@ -405,7 +418,7 @@ dotnet run --project libs/Norn/NornCLI -- serve --port 12123 --ke-port 14460 --l
 | `WSL` | Needs chrony / ntpd-rs / gnutls — inside WSL on Windows, installed natively on GNU/Linux |
 | `Loopback` | Drives a real in-process Norn server over loopback |
 | `Slow` | Runs longer than about five seconds |
-| `KnownIssue` | Pins an open defect — none at present |
+| `KnownIssue` | Pins an open defect — one at present, see [Results](#results) |
 
 Tests whose prerequisites are missing call `Assert.Ignore` with the command needed to
 satisfy them, rather than failing.

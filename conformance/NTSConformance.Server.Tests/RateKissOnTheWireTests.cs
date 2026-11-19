@@ -41,6 +41,10 @@ public class RateKissOnTheWireTests
     private NornServerFixture? fixture;
 
 
+    /// <remarks>
+    /// <c>Leak: 0</c>, so that a request over the limit is certainly refused rather than answered
+    /// one time in four; <see cref="RateLimiterTests"/> says why the leak exists and tests it.
+    /// </remarks>
     [SetUp]
     public async Task StartServer()
 
@@ -48,7 +52,8 @@ public class RateKissOnTheWireTests
                                rateLimiter: new NTPRateLimiter(
                                                 MinimumInterval:  MinimumInterval,
                                                 Burst:            Burst,
-                                                KissInterval:     TimeSpan.FromMinutes(5)
+                                                KissInterval:     TimeSpan.FromMinutes(5),
+                                                Leak:             0
                                             )
                            );
 

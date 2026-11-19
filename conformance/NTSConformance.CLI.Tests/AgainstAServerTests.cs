@@ -174,21 +174,34 @@ public class AgainstAServerTests
     /// The exit code is the interesting half. A Kiss-o'-Death is not a measurement, so a run
     /// that draws nothing but kisses has to fail — otherwise a monitoring script watching a
     /// server that has stopped answering it sees nothing wrong.
+    ///
+    /// Slow, and unavoidably so. A Kiss-o'-Death on an NTS association arrives without an
+    /// authenticator, so the client does not end the query on it: it waits out its timeout for
+    /// an authenticated answer, which a forged kiss racing the real one could otherwise suppress,
+    /// and reports the kiss only when none came (Norn c79486c). Every refused query therefore
+    /// costs the full <c>--timeout</c> of 30 seconds — the second run below has two of them —
+    /// and the timeout cannot be shortened without bringing back the slow TLS handshakes it
+    /// was raised for.
     /// </remarks>
     [Test]
+    [Category(TestCategories.Slow)]
     public async Task Query_ReportsARateKiss()
     {
 
         await fixture!.DisposeAsync();
 
+        // No leak, or a refused query would be answered one time in four.
         fixture = await NornServerFixture.StartAsync(
                             rateLimiter: new NTPRateLimiter(
                                              MinimumInterval:  TimeSpan.FromMinutes(10),
-                                             Burst:            1
+                                             Burst:            1,
+                                             Leak:             0
                                          )
                         );
 
-        var run = Norn.Run(Against("query", "--count", "2", "--interval", "0.1"));
+        var runTimeout = TimeSpan.FromSeconds(120);
+
+        var run = Norn.Run(Against("query", "--count", "2", "--interval", "0.1"), runTimeout);
 
         Assert.Multiple(() => {
 
@@ -203,7 +216,7 @@ public class AgainstAServerTests
 
         });
 
-        var refused = Norn.Run(Against("query", "--count", "2", "--interval", "0.1"));
+        var refused = Norn.Run(Against("query", "--count", "2", "--interval", "0.1"), runTimeout);
 
         Assert.That(refused.ExitCode,
                     Is.EqualTo(1),
