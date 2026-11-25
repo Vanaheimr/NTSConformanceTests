@@ -33,7 +33,7 @@ public static class RawNtsKeOverSsh
     /// <see cref="RawNtsKeExchange.HandshakeSucceeded"/> standing for the subsystem having been
     /// opened, and neither ALPN nor a TLS version.
     /// </remarks>
-    public static async Task<RawNtsKeExchange> ExchangeAsync(SshClient          sshClient,
+    public static async Task<RawNtsKeExchange> ExchangeAsync(SSHClient          sshClient,
                                                              Byte[]             requestRecords,
                                                              TimeSpan?          timeout            = null,
                                                              CancellationToken  cancellationToken  = default)
@@ -48,7 +48,7 @@ public static class RawNtsKeOverSsh
 
         try
         {
-            channel = await sshClient.OpenSubsystemAsync(SubsystemName, timeoutCts.Token);
+            channel = await sshClient.OpenSubsystem(SubsystemName, timeoutCts.Token);
         }
         catch (Exception e)
         {

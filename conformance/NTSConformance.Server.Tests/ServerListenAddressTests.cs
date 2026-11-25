@@ -14,7 +14,7 @@ namespace NTSConformance.Server.Tests;
 /// Which local addresses the server listens on, and whether a client on each address family can
 /// actually reach it.
 ///
-/// The address is configured as a Hermod <see cref="IIPAddress"/>, so <c>IPvXAddress.Any</c>
+/// The address is configured as a Hermod <see cref="IPAddress"/>, so <c>IPvXAddress.Any</c>
 /// expresses "both families" as one value rather than leaving the caller to know that
 /// <c>IPv6Any</c> plus dual mode happens to mean that.
 ///

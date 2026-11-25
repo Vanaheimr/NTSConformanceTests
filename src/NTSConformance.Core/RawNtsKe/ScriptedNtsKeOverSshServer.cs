@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net.Sockets;
 
+using org.GraphDefined.Vanaheimr.Illias;
 using org.GraphDefined.Vanaheimr.Hermod;
 using org.GraphDefined.Vanaheimr.Hermod.SSH;
 using org.GraphDefined.Vanaheimr.Hermod.SSH.Client;
@@ -162,19 +163,19 @@ public sealed class ScriptedNtsKeOverSshServer : IAsyncDisposable
     /// <summary>
     /// An SSH connection to this server with <see cref="ClientKey"/>, its host key pinned.
     /// </summary>
-    public ValueTask<SshClient> ConnectAsync(CancellationToken cancellationToken = default)
+    public ValueTask<SSHClient> ConnectAsync(CancellationToken cancellationToken = default)
     {
 
         var hostKey = HostKey;
 
-        return SshClient.ConnectAsync("127.0.0.1",
-                                      Port.ToUInt16(),
-                                      new SshClientOptions {
-                                          Username       = "ntske",
-                                          Credentials    = [ ClientKey ],
-                                          VerifyHostKey  = blob => blob.AsSpan().SequenceEqual(hostKey)
-                                      },
-                                      cancellationToken);
+        return SSHClient.Connect("127.0.0.1",
+                                 Port,
+                                 new SSHClientOptions {
+                                     Username       = User_Id.Parse("ntske"),
+                                     Credentials    = [ ClientKey ],
+                                     VerifyHostKey  = blob => blob.AsSpan().SequenceEqual(hostKey)
+                                 },
+                                 cancellationToken);
 
     }
 

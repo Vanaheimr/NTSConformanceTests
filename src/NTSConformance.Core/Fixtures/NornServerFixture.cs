@@ -1,9 +1,12 @@
+using org.GraphDefined.Vanaheimr.Illias;
 using org.GraphDefined.Vanaheimr.Hermod;
 using org.GraphDefined.Vanaheimr.Hermod.DNS;
 using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 using org.GraphDefined.Vanaheimr.Hermod.SSH;
 using org.GraphDefined.Vanaheimr.Hermod.SSH.Client;
 using org.GraphDefined.Vanaheimr.Norn.NTS;
+
+using HermodIPAddress = org.GraphDefined.Vanaheimr.Hermod.IPAddress;
 
 namespace NTSConformance.Core.Fixtures;
 
@@ -122,7 +125,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     TestCertificate? certificate                   = null,
                                                     String?          externalHostName              = null,
                                                     IPPort?          advertisedNTPPort             = null,
-                                                    IIPAddress?      listenIPAddress               = null,
+                                                    HermodIPAddress? listenIPAddress               = null,
                                                     TimeProvider?    timeProvider                  = null,
                                                     TimeSpan?        clockResolution               = null,
                                                     InterleavedModePolicy? interleavedMode         = null,
@@ -231,7 +234,7 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// </param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <exception cref="InvalidOperationException">The server was started without one.</exception>
-    public ValueTask<SshClient> ConnectSshAsync(ISshHostKey        clientKey,
+    public ValueTask<SSHClient> ConnectSshAsync(ISshHostKey        clientKey,
                                                 String             host               = "127.0.0.1",
                                                 CancellationToken  cancellationToken  = default)
     {
@@ -241,14 +244,14 @@ public sealed class NornServerFixture : IAsyncDisposable
 
         var hostKey = Server.SSHHostKeys[0].PublicKeyBlob;
 
-        return SshClient.ConnectAsync(host,
-                                      sshPort.ToUInt16(),
-                                      new SshClientOptions {
-                                          Username       = "ntske",
-                                          Credentials    = [ clientKey ],
-                                          VerifyHostKey  = blob => blob.AsSpan().SequenceEqual(hostKey)
-                                      },
-                                      cancellationToken);
+        return SSHClient.Connect(host,
+                                 sshPort,
+                                 new SSHClientOptions {
+                                     Username       = User_Id.Parse("ntske"),
+                                     Credentials    = [ clientKey ],
+                                     VerifyHostKey  = blob => blob.AsSpan().SequenceEqual(hostKey)
+                                 },
+                                 cancellationToken);
 
     }
 

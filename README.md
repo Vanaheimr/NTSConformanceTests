@@ -65,8 +65,8 @@ means demobilizing and sending nothing more. A hardening, and a deviation from a
 same. It is pinned as this suite's `KnownIssue`, in
 `OnAnNtsAssociation_AnUnauthenticatedDenyOrRstr_StillStopsTheClient`.
 
-Verified state on 19 November 2026, on .NET 11: **911 tests green** in the hermetic gate (Norn's
-own 320 included), and one open deviation, the `KnownIssue` above. The one before it,
+Verified state on 25 November 2026, on .NET 11: **917 tests green** in the hermetic gate (Norn's
+own 326 included), and one open deviation, the `KnownIssue` above. The one before it,
 AES-128-GCM-SIV against chronyd, was resolved and its cause is described under
 [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
