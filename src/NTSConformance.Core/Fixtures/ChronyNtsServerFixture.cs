@@ -96,7 +96,7 @@ public sealed class ChronyNtsServerFixture : IAsyncDisposable
 
         // -L 0 keeps chronyd in the foreground with logging, so the detached process stays
         // alive for the fixture's lifetime and its output is available on failure.
-        Wsl.StartDetached($"/usr/sbin/chronyd -f {WorkingDirectory}/chrony.conf -L 0");
+        using var started = Wsl.StartDetached($"/usr/sbin/chronyd -f {WorkingDirectory}/chrony.conf -L 0 >/dev/null 2>&1");
 
         var deadline = DateTime.UtcNow + (startupTimeout ?? TimeSpan.FromSeconds(20));
 

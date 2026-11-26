@@ -104,7 +104,7 @@ public sealed class NtpdRsNtsServerFixture : IAsyncDisposable
         if (!setup.StdOut.Contains("SETUP_OK"))
             return null;
 
-        Wsl.StartDetached($"ntp-daemon -c {WorkingDirectory}/ntp.toml");
+        using var started = Wsl.StartDetached($"ntp-daemon -c {WorkingDirectory}/ntp.toml > {WorkingDirectory}/daemon.log 2>&1");
 
         var deadline = DateTime.UtcNow + (startupTimeout ?? TimeSpan.FromSeconds(20));
 

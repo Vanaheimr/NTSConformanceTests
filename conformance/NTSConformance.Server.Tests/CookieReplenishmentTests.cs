@@ -2,8 +2,11 @@ using NUnit.Framework;
 
 using NTSConformance.Core;
 using NTSConformance.Core.Fixtures;
+using NTSConformance.Core.RawNtp;
+using NTSConformance.Core.RawNtsKe;
 
 using org.GraphDefined.Vanaheimr.Norn.NTP;
+using org.GraphDefined.Vanaheimr.Norn.NTS;
 
 namespace NTSConformance.Server.Tests;
 
@@ -123,6 +126,113 @@ public class CookieReplenishmentTests
         Assert.That(remaining[^1],
                     Is.GreaterThanOrEqualTo(remaining[0]),
                     $"the cookie pool shrank over six queries: {String.Join(" -> ", remaining)}");
+
+    }
+
+
+    /// <summary>
+    /// RFC 8915 §5.5 / §5.7: Cookie Placeholder fields whose body length does not equal the
+    /// cookie length are invalid and MUST NOT cause the server to emit additional cookies or
+    /// amplify the response beyond the request size.
+    /// </summary>
+    [Test]
+    public async Task InvalidLengthCookiePlaceholders_DoNotMintExtraCookies()
+    {
+
+        if (fixture is null)
+        {
+            Assert.Fail("the server fixture did not start");
+            return;
+        }
+
+        var client = fixture.CreateClient(TimeSpan.FromSeconds(10),
+                                          aeadAlgorithms: [ AEADAlgorithms.AES_SIV_CMAC_256 ]);
+
+        var keResult = await client.GetNTSKERecords();
+        Assert.That(keResult.Success, Is.True, $"NTS-KE failed: {keResult.ErrorMessage}");
+
+        var keResponse = keResult.Response!;
+        var cookie     = keResponse.Cookies.First();
+        var uid        = RawNtsExtensionFields.RandomUniqueIdentifier();
+
+        var requestPacket = new RawNtpPacket {
+                                LeapIndicator     = RawNtpLeapIndicator.NoWarning,
+                                Version           = 4,
+                                Mode              = RawNtpMode.Client,
+                                Poll              = 6,
+                                TransmitTimestamp = 0xE800_0000_0000_1234UL
+                            };
+
+        requestPacket.ExtensionFields.Add(uid);
+        requestPacket.ExtensionFields.Add(RawNtsExtensionFields.NtsCookie(cookie));
+        requestPacket.ExtensionFields.Add(RawNtsExtensionFields.NtsCookiePlaceholder(cookie.Length - 4));
+        requestPacket.ExtensionFields.Add(RawNtsExtensionFields.NtsCookiePlaceholder(cookie.Length + 4));
+        RawNtsExtensionFields.AppendAuthenticator(requestPacket, keResponse.C2SKey);
+
+        var requestBytes  = RawNtpWriter.Write(requestPacket);
+        var parsed        = RawNtpExchange.Exchange(requestPacket, "127.0.0.1", fixture.NTPPort, timeout: TimeSpan.FromSeconds(10));
+        var responseBytes = RawNtpWriter.Write(parsed);
+
+        Assert.That(RawNtsExtensionFields.TryVerifyAuthenticator(parsed, keResponse.S2CKey, out var encryptedFields, out var err),
+                    Is.True,
+                    $"response authenticator failed: {err}");
+
+        var returnedCookies = encryptedFields!.Count(field => field.FieldType == RawExtensionFieldTypes.NTSCookie);
+
+        Assert.Multiple(() => {
+
+            Assert.That(returnedCookies,
+                        Is.EqualTo(1),
+                        $"invalid-length placeholders must not draw extra cookies (expected 1 replacement, got {returnedCookies})");
+
+            Assert.That(responseBytes.Length,
+                        Is.LessThanOrEqualTo(requestBytes.Length),
+                        $"response ({responseBytes.Length}B) must not amplify request ({requestBytes.Length}B)");
+
+        });
+
+    }
+
+
+    /// <summary>
+    /// RFC 8915 §5.7: An NTS request with a valid cookie but a corrupted C2S authenticator
+    /// MUST be answered with an NTS NAK (Stratum 0, kiss code "NTSN") echoing the Unique ID.
+    /// </summary>
+    [Test]
+    public async Task CorruptedAuthenticator_DrawsNtsNak()
+    {
+
+        if (fixture is null)
+        {
+            Assert.Fail("the server fixture did not start");
+            return;
+        }
+
+        var ke = await RawNtsKeClient.ExchangeAsync(
+                     "127.0.0.1",
+                     fixture.NTSKEPort,
+                     RawNtsKeCodec.ClientRequest(15),
+                     TimeSpan.FromSeconds(10)
+                 );
+
+        Assert.That(ke.HandshakeSucceeded, Is.True, ke.ToString());
+
+        var cookie   = ke.RecordsOfType(RawNtsKeRecordTypes.NewCookieForNtpv4).First().Body;
+        var wrongKey = Enumerable.Repeat((Byte) 0x5A, 32).ToArray();
+        var request  = RawNtsExtensionFields.BuildNtsRequest(wrongKey, cookie);
+
+        var response = RawNtpExchange.Exchange(request, "127.0.0.1", fixture.NTPPort, timeout: TimeSpan.FromSeconds(10));
+
+        Assert.Multiple(() => {
+
+            Assert.That(response.IsKissOfDeath, Is.True, "corrupted authenticator must draw a Kiss-o'-Death");
+            Assert.That(response.KissCode,      Is.EqualTo("NTSN"), "corrupted authenticator must draw NTSN NAK");
+
+            Assert.That(response.UniqueIdentifier,
+                        Is.EqualTo(request.UniqueIdentifier).AsCollection,
+                        "NTS NAK must echo the request's Unique Identifier");
+
+        });
 
     }
 

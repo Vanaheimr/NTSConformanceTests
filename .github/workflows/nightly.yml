@@ -113,12 +113,25 @@ jobs:
       # in this category skips with that reason and the step passes trivially.
       - name: Test (interop against chronyd, ntpd-rs, gnutls-cli)
         timeout-minutes: 45
-        run: >
-          dotnet test NTSConformanceTests.slnx --configuration Release --no-build
-          --filter "TestCategory=WSL"
-          --logger "console;verbosity=normal"
-          --logger "trx;LogFilePrefix=interop-${{ matrix.leg }}"
-          --results-directory artifacts
+        shell: bash
+        run: |
+          set +e
+          dotnet test NTSConformanceTests.slnx --configuration Release --no-build \
+            --filter "TestCategory=WSL" \
+            --logger "console;verbosity=normal" \
+            --logger "trx;LogFilePrefix=interop-${{ matrix.leg }}" \
+            --results-directory artifacts 2>&1 | tee interop.out
+          rc=${PIPESTATUS[0]}
+          set -e
+          [ "${rc}" -eq 0 ] || exit "${rc}"
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            skipped=$(grep -oE 'Skipped: +[0-9]+' interop.out | grep -oE '[0-9]+' | tail -1)
+            : "${skipped:=0}"
+            if [ "${skipped}" -ne 0 ]; then
+              echo "FAIL: ${skipped} interop checks skipped on Linux although tools are installed."
+              exit 1
+            fi
+          fi
 
       # Informational, and it has to be. These run real NTS sessions against
       # Cloudflare, PTB, Netnod and time.nl, and a hosted runner is not a
@@ -175,25 +188,41 @@ jobs:
     # than a build failure — which is why this job is separate from the one
     # above, and why the interop and online lanes are left out. One question at
     # a time.
-    runs-on: ubuntu-latest
-    container: debian:13
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            leg: windows-latest
+          - os: ubuntu-latest
+            container: debian:13
+            leg: debian-13-container
+    name: against-norn-master (${{ matrix.leg }})
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     steps:
       # HTTP/1.1 as in full-suite. Here it also covers the git fetch in the
       # next-but-one step, which is a network fetch of its own.
       - name: Install git and the .NET prerequisites (Debian container)
+        if: runner.os == 'Linux'
         run: |
           apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git libicu76 libssl3t64 libstdc++6 tzdata
           git config --system http.version HTTP/1.1
+
+      - name: Allow long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
 
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Move the submodules to master
+        shell: bash
         run: |
           git config --global --add safe.directory '*'
           git submodule foreach 'git fetch origin master && git checkout FETCH_HEAD'
-          echo "### Submodule revisions under test" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Submodule revisions under test (${{ matrix.leg }})" >> "$GITHUB_STEP_SUMMARY"
           git submodule status >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-dotnet@v6
@@ -209,7 +238,7 @@ jobs:
           dotnet test NTSConformanceTests.slnx --configuration Release --no-build
           --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
           --logger "console;verbosity=normal"
-          --logger "trx;LogFilePrefix=offline-norn-master"
+          --logger "trx;LogFilePrefix=offline-norn-master-${{ matrix.leg }}"
           --results-directory artifacts
 
       # This is the one job whose red is a finding rather than a breakage, and
@@ -224,7 +253,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: test-results-against-norn-master
+          name: test-results-against-norn-master-${{ matrix.leg }}
           path: artifacts/*.trx
 
   # ---------------------------------------------------------------------------

@@ -145,13 +145,16 @@ public sealed class UdpRelayProbe : IDisposable
     private async Task ReceiveLoopAsync()
     {
 
-        while (!cancellation.IsCancellationRequested)
+        while (true)
         {
 
             UdpReceiveResult received;
 
             try
             {
+                if (cancellation.IsCancellationRequested)
+                    return;
+
                 received = await udpClient.ReceiveAsync(cancellation.Token);
             }
             catch (OperationCanceledException)

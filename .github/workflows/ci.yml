@@ -124,7 +124,7 @@ jobs:
       #
       # KnownIssue is excluded for the same reason it exists: it pins an open,
       # documented RFC deviation while it is being fixed, and the gate must
-      # stay green while it does. Nothing carries the tag at present.
+      # stay green while it does (currently: unauthenticated DENY/RSTR on NTS).
       #
       # Online and WSL run in nightly.yml, where a network failure can be read
       # as a network failure instead of turning a merge red.
@@ -135,6 +135,18 @@ jobs:
           --filter "TestCategory!=Online&TestCategory!=WSL&TestCategory!=KnownIssue"
           --logger "console;verbosity=normal"
           --logger "trx;LogFilePrefix=${{ matrix.leg }}"
+          --results-directory artifacts
+
+      # DebugXSink captures Debug.WriteLine, which is [Conditional("DEBUG")] and stripped
+      # in Release builds. Running the fast crypto conformance project in Debug keeps the
+      # key-leakage guard active in CI rather than vacuous.
+      - name: Test (crypto key-leakage guard in Debug)
+        timeout-minutes: 10
+        run: >
+          dotnet test conformance/NTSConformance.Crypto.Tests/NTSConformance.Crypto.Tests.csproj
+          --configuration Debug
+          --logger "console;verbosity=normal"
+          --logger "trx;LogFilePrefix=${{ matrix.leg }}-crypto-debug"
           --results-directory artifacts
 
       # Which checks ran, which skipped and with what reason is the single most

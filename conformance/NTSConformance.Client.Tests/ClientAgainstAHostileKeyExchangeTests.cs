@@ -524,6 +524,49 @@ public class ClientAgainstAHostileKeyExchangeTests
 
     }
 
+
+    /// <summary>
+    /// RFC 8915 §4.1.8: NTPv4 Port Negotiation carries a 2-octet non-zero port number.
+    /// Port 0 or a wrong body length must be refused as a protocol error rather than silently
+    /// falling back to port 123.
+    /// </summary>
+    [Test]
+    public async Task ZeroPortNegotiation_IsRefused()
+    {
+
+        var result = await Exchange(Reply(RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv4),
+                                          RawNtsKeRecord.AeadAlgorithmNegotiation(15),
+                                          RawNtsKeRecord.NewCookieForNtpv4(new Byte[100]),
+                                          RawNtsKeRecord.Ntpv4PortNegotiation(0),
+                                          RawNtsKeRecord.EndOfMessage()));
+
+        AssertRefused(result, NTSKEErrorCategory.Protocol,
+                      "port 0 in NTPv4 Port Negotiation is malformed and must be rejected");
+
+    }
+
+
+    /// <summary>
+    /// RFC 8915 §4.1.7: NTPv4 Server Negotiation carries a bare ASCII host/IP without
+    /// IPv6 zone identifiers ('%') or brackets ('[' / ']').
+    /// </summary>
+    [TestCase("fe80::1%eth0")]
+    [TestCase("[::1]")]
+    [TestCase("")]
+    public async Task MalformedServerNegotiation_IsRefused(String BadServer)
+    {
+
+        var result = await Exchange(Reply(RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv4),
+                                          RawNtsKeRecord.AeadAlgorithmNegotiation(15),
+                                          RawNtsKeRecord.NewCookieForNtpv4(new Byte[100]),
+                                          RawNtsKeRecord.Ntpv4ServerNegotiation(BadServer),
+                                          RawNtsKeRecord.EndOfMessage()));
+
+        AssertRefused(result, NTSKEErrorCategory.Protocol,
+                      $"malformed server negotiation '{BadServer}' must be rejected");
+
+    }
+
     #endregion
 
 }

@@ -322,6 +322,45 @@ public class AesGcmSivConformanceTests
 
     #endregion
 
+    #region RFC 8452 Appendix C.2 — AEAD_AES_256_GCM_SIV
+
+    /// <summary>
+    /// Published AEAD_AES_256_GCM_SIV vectors from RFC 8452 Appendix C.2 (encrypt and decrypt):
+    /// empty plaintext, 8-byte plaintext without AAD, and 4-byte plaintext with 12-byte AAD.
+    /// </summary>
+    [TestCase("0100000000000000000000000000000000000000000000000000000000000000",
+              "030000000000000000000000",
+              "",
+              "",
+              "07f5f4169bbf55a8400cd47ea6fd400f")]
+    [TestCase("0100000000000000000000000000000000000000000000000000000000000000",
+              "030000000000000000000000",
+              "",
+              "0100000000000000",
+              "c2ef328e5c71c83b843122130f7364b761e0b97427e3df28")]
+    [TestCase("0100000000000000000000000000000000000000000000000000000000000000",
+              "030000000000000000000000",
+              "010000000000000000000000",
+              "02000000",
+              "22b3f4cd1835e517741dfddccfa07fa4661b74cf")]
+    [Test]
+    public void RFC8452_C2_Aes256GcmSiv_EncryptAndDecrypt(String Key, String Nonce, String AAD, String Plaintext, String Expected)
+    {
+
+        var cipher    = new AES_GCM_SIV(Bytes.FromHex(Key));
+        var sealed_   = cipher.Encrypt(Bytes.FromHex(AAD), Bytes.FromHex(Nonce), Bytes.FromHex(Plaintext));
+        var opened    = cipher.Decrypt(Bytes.FromHex(AAD), Bytes.FromHex(Nonce), Bytes.FromHex(Expected));
+
+        Assert.Multiple(() => {
+            Assert.That(cipher.Algorithm,        Is.EqualTo(AEADAlgorithms.AES_256_GCM_SIV));
+            Assert.That(Bytes.ToHex(sealed_),    Is.EqualTo(Expected),  $"encrypt mismatch for key {Key}");
+            Assert.That(Bytes.ToHex(opened),     Is.EqualTo(Plaintext), $"decrypt mismatch for key {Key}");
+        });
+
+    }
+
+    #endregion
+
     #region Authentication failures & input validation
 
     [Test]

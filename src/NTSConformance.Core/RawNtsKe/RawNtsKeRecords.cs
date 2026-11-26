@@ -166,6 +166,12 @@ public sealed record RawNtsKeRecord(Boolean IsCritical, UInt16 RecordType, Byte[
     public static RawNtsKeRecord NewCookieForNtpv4(Byte[] cookie)
         => new (false, RawNtsKeRecordTypes.NewCookieForNtpv4, cookie);
 
+    public static RawNtsKeRecord Ntpv4ServerNegotiation(String server, Boolean isCritical = false)
+        => new (isCritical, RawNtsKeRecordTypes.Ntpv4ServerNegotiation, System.Text.Encoding.ASCII.GetBytes(server));
+
+    public static RawNtsKeRecord Ntpv4PortNegotiation(UInt16 port, Boolean isCritical = false)
+        => new (isCritical, RawNtsKeRecordTypes.Ntpv4PortNegotiation, UInt16Body(port));
+
     /// <summary>
     /// IANA record type 1024: this peer derives AES-128-GCM-SIV's keys with the algorithm id
     /// RFC 8915 § 5.1 specifies, rather than the 15 that chrony writes there. Empty body, and
