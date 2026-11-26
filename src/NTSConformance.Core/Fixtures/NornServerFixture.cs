@@ -157,6 +157,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                                 MasterKeyRotationGracePeriod:  masterKeyRotationGracePeriod,
                                 TLSCertificate:                certificate?.Certificate,
                                 TLSPrivateKey:                 certificate?.PrivateKey,
+                                TLSCertificateChain:           certificate?.IntermediateCertificates,
                                 ListenIPAddress:               listenIPAddress,
                                 TimeProvider:                  timeProvider,
                                 ClockResolution:               clockResolution,
