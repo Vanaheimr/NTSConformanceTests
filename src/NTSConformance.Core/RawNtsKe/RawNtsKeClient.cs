@@ -117,9 +117,10 @@ public static class RawNtsKeClient
     public static async Task<RawNtsKeExchange> ExchangeAsync(String             host,
                                                              IPPort             port,
                                                              Byte[]             requestRecords,
-                                                             TimeSpan?          timeout        = null,
-                                                             Boolean            offerAlpn      = true,
-                                                             CancellationToken  cancellationToken = default)
+                                                             TimeSpan?          timeout           = null,
+                                                             Boolean            offerAlpn         = true,
+                                                             CancellationToken  cancellationToken = default,
+                                                             Int32?             writeChunkSize    = null)
     {
 
         var effectiveTimeout = timeout ?? TimeSpan.FromSeconds(15);
@@ -175,8 +176,20 @@ public static class RawNtsKeClient
         try
         {
 
-            await sslStream.WriteAsync(requestRecords, timeoutCts.Token);
-            await sslStream.FlushAsync(timeoutCts.Token);
+            if (writeChunkSize is > 0 && writeChunkSize.Value < requestRecords.Length)
+            {
+                for (var offset = 0; offset < requestRecords.Length; offset += writeChunkSize.Value)
+                {
+                    var count = Math.Min(writeChunkSize.Value, requestRecords.Length - offset);
+                    await sslStream.WriteAsync(requestRecords.AsMemory(offset, count), timeoutCts.Token);
+                    await sslStream.FlushAsync(timeoutCts.Token);
+                }
+            }
+            else
+            {
+                await sslStream.WriteAsync(requestRecords, timeoutCts.Token);
+                await sslStream.FlushAsync(timeoutCts.Token);
+            }
 
             var received = new MemoryStream();
             var buffer   = new Byte[4096];

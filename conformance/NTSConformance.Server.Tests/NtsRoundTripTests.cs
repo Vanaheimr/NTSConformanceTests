@@ -243,4 +243,65 @@ public class NtsRoundTripTests
 
     }
 
+
+    /// <summary>
+    /// Connecting directly by IPv6 literal (<see cref="IPv6Address.Localhost"/>, <c>::1</c>) to a
+    /// server whose certificate carries <em>only</em> an IPv6 IP-SAN (<c>::1</c>, no DNS SAN) must
+    /// match without <see cref="SslPolicyErrors.RemoteCertificateNameMismatch"/> and complete an
+    /// authenticated IPv6 UDP NTS exchange.
+    /// </summary>
+    [Test]
+    public async Task FullNtsExchange_DirectIPv6LiteralWithPureIpSanCertificate_Succeeds()
+    {
+
+        var pureIpv6Cert = TestCertificate.Generate(
+                               subjectCommonName:       "ipv6-loopback",
+                               subjectAlternativeNames: [],
+                               ipAddresses:             [ "::1" ]
+                           );
+
+        await using var ipv6Fixture = await NornServerFixture.StartAsync(
+                                                certificate:      pureIpv6Cert,
+                                                externalHostName: "[::1]",
+                                                listenIPAddress:  IPv6Address.Localhost
+                                            );
+
+        SslPolicyErrors? observedPolicyErrors = null;
+
+        var client = new NTSClient(
+                         IPv6Address.Localhost,
+                         NTSKE_Port:                 ipv6Fixture.NTSKEPort,
+                         NTP_Port:                   ipv6Fixture.NTPPort,
+                         RemoteCertificateValidator: (_, _, _, _, errors) => {
+                                                         observedPolicyErrors = errors;
+                                                         var withoutChain = errors & ~SslPolicyErrors.RemoteCertificateChainErrors;
+                                                         return withoutChain == SslPolicyErrors.None
+                                                                    ? TLSValidationResult.Success()
+                                                                    : TLSValidationResult.Failed($"Unexpected TLS policy errors: {errors}");
+                                                     },
+                         IPVersionPreference:        IPVersionPreference.IPv6Only,
+                         Timeout:                    TimeSpan.FromSeconds(10)
+                     );
+
+        var ntsKeResult = await client.GetNTSKERecords();
+
+        Assert.That(ntsKeResult.Success,
+                    Is.True,
+                    $"Direct IPv6 literal NTS-KE failed: {ntsKeResult.ErrorMessage} (policyErrors={observedPolicyErrors})");
+
+        Assert.That(observedPolicyErrors & SslPolicyErrors.RemoteCertificateNameMismatch,
+                    Is.EqualTo(SslPolicyErrors.None),
+                    $"IPv6 IP-SAN ::1 must match without RemoteCertificateNameMismatch (got {observedPolicyErrors})");
+
+        var queryResult = await client.QueryTime(
+                              NTSKEResponse: ntsKeResult.Response!,
+                              Timeout:       TimeSpan.FromSeconds(10)
+                          );
+
+        Assert.That(queryResult.Success,
+                    Is.True,
+                    $"Direct IPv6 literal authenticated NTS query failed: {queryResult.ErrorMessage}");
+
+    }
+
 }

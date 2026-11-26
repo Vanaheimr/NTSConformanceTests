@@ -1,6 +1,7 @@
 using NUnit.Framework;
 
 using NTSConformance.Core;
+using NTSConformance.Core.RawNtp;
 
 using org.GraphDefined.Vanaheimr.Norn.NTS;
 
@@ -160,15 +161,25 @@ public class AesGcmSivConformanceTests
     public void RFC8452_C1_Encrypt(String Key, String Nonce, String AAD, String Plaintext, String Expected)
     {
 
-        var result = new AES_GCM_SIV(Bytes.FromHex(Key)).
-                         Encrypt(Bytes.FromHex(AAD),
-                                 Bytes.FromHex(Nonce),
-                                 Bytes.FromHex(Plaintext));
+        var key       = Bytes.FromHex(Key);
+        var nonce     = Bytes.FromHex(Nonce);
+        var aad       = Bytes.FromHex(AAD);
+        var plaintext = Bytes.FromHex(Plaintext);
 
-        Assert.That(Bytes.ToHex(result),
-                    Is.EqualTo(Expected),
-                    $"key {Key}, nonce {Nonce}, AAD {AAD.Length / 2} bytes, " +
-                    $"plaintext {Plaintext.Length / 2} bytes");
+        var nornResult = new AES_GCM_SIV(key).Encrypt(aad, nonce, plaintext);
+        var rawResult  = new RawAesGcmSiv(key).Encrypt(aad, nonce, plaintext);
+
+        Assert.Multiple(() => {
+
+            Assert.That(Bytes.ToHex(nornResult),
+                        Is.EqualTo(Expected),
+                        $"Norn: key {Key}, nonce {Nonce}, AAD {AAD.Length / 2} bytes, plaintext {Plaintext.Length / 2} bytes");
+
+            Assert.That(Bytes.ToHex(rawResult),
+                        Is.EqualTo(Expected),
+                        $"RawAesGcmSiv: key {Key}, nonce {Nonce}, AAD {AAD.Length / 2} bytes, plaintext {Plaintext.Length / 2} bytes");
+
+        });
 
     }
 
@@ -309,14 +320,18 @@ public class AesGcmSivConformanceTests
     public void RFC8452_C1_Decrypt(String Key, String Nonce, String AAD, String Plaintext, String Sealed_)
     {
 
-        var result = new AES_GCM_SIV(Bytes.FromHex(Key)).
-                         Decrypt(Bytes.FromHex(AAD),
-                                 Bytes.FromHex(Nonce),
-                                 Bytes.FromHex(Sealed_));
+        var key     = Bytes.FromHex(Key);
+        var nonce   = Bytes.FromHex(Nonce);
+        var aad     = Bytes.FromHex(AAD);
+        var sealed_ = Bytes.FromHex(Sealed_);
 
-        Assert.That(Bytes.ToHex(result),
-                    Is.EqualTo(Plaintext),
-                    $"key {Key}, nonce {Nonce}");
+        var nornResult = new AES_GCM_SIV(key).Decrypt(aad, nonce, sealed_);
+        var rawResult  = new RawAesGcmSiv(key).Decrypt(aad, nonce, sealed_);
+
+        Assert.Multiple(() => {
+            Assert.That(Bytes.ToHex(nornResult), Is.EqualTo(Plaintext), $"Norn: key {Key}, nonce {Nonce}");
+            Assert.That(Bytes.ToHex(rawResult),  Is.EqualTo(Plaintext), $"RawAesGcmSiv: key {Key}, nonce {Nonce}");
+        });
 
     }
 
@@ -347,15 +362,64 @@ public class AesGcmSivConformanceTests
     public void RFC8452_C2_Aes256GcmSiv_EncryptAndDecrypt(String Key, String Nonce, String AAD, String Plaintext, String Expected)
     {
 
-        var cipher    = new AES_GCM_SIV(Bytes.FromHex(Key));
-        var sealed_   = cipher.Encrypt(Bytes.FromHex(AAD), Bytes.FromHex(Nonce), Bytes.FromHex(Plaintext));
-        var opened    = cipher.Decrypt(Bytes.FromHex(AAD), Bytes.FromHex(Nonce), Bytes.FromHex(Expected));
+        var key       = Bytes.FromHex(Key);
+        var nonce     = Bytes.FromHex(Nonce);
+        var aad       = Bytes.FromHex(AAD);
+        var plaintext = Bytes.FromHex(Plaintext);
+        var expected  = Bytes.FromHex(Expected);
+
+        var cipher    = new AES_GCM_SIV(key);
+        var raw       = new RawAesGcmSiv(key);
+
+        var sealed_   = cipher.Encrypt(aad, nonce, plaintext);
+        var opened    = cipher.Decrypt(aad, nonce, expected);
+        var rawSealed = raw.Encrypt(aad, nonce, plaintext);
+        var rawOpened = raw.Decrypt(aad, nonce, expected);
 
         Assert.Multiple(() => {
-            Assert.That(cipher.Algorithm,        Is.EqualTo(AEADAlgorithms.AES_256_GCM_SIV));
-            Assert.That(Bytes.ToHex(sealed_),    Is.EqualTo(Expected),  $"encrypt mismatch for key {Key}");
-            Assert.That(Bytes.ToHex(opened),     Is.EqualTo(Plaintext), $"decrypt mismatch for key {Key}");
+            Assert.That(cipher.Algorithm,         Is.EqualTo(AEADAlgorithms.AES_256_GCM_SIV));
+            Assert.That(Bytes.ToHex(sealed_),     Is.EqualTo(Expected),  $"Norn encrypt mismatch for key {Key}");
+            Assert.That(Bytes.ToHex(opened),      Is.EqualTo(Plaintext), $"Norn decrypt mismatch for key {Key}");
+            Assert.That(Bytes.ToHex(rawSealed),   Is.EqualTo(Expected),  $"RawAesGcmSiv encrypt mismatch for key {Key}");
+            Assert.That(Bytes.ToHex(rawOpened),   Is.EqualTo(Plaintext), $"RawAesGcmSiv decrypt mismatch for key {Key}");
         });
+
+    }
+
+
+    /// <summary>
+    /// Differential test: Norn's BouncyCastle-backed <c>AES_GCM_SIV</c> and the suite's independent
+    /// BCL-only <see cref="RawAesGcmSiv"/> must produce identical ciphertexts and open each other's
+    /// outputs across both key sizes and block-boundary/non-boundary AAD and plaintext lengths.
+    /// </summary>
+    [TestCase(16)]
+    [TestCase(32)]
+    public void Differential_RawAesGcmSivAndNornAgreeAcrossLengths(Int32 KeyLength)
+    {
+
+        var key   = Enumerable.Range(1, KeyLength).Select(i => (Byte) (i * 7)).ToArray();
+        var nonce = Enumerable.Range(1, 12).       Select(i => (Byte) (i * 13)).ToArray();
+        var norn  = new AES_GCM_SIV(key);
+        var raw   = new RawAesGcmSiv(key);
+
+        Int32[] lengths = [ 0, 1, 15, 16, 17, 31, 32, 33, 64, 100 ];
+
+        foreach (var aadLen in lengths)
+        {
+            var aad = Enumerable.Range(0, aadLen).Select(i => (Byte) (i ^ 0xA5)).ToArray();
+
+            foreach (var ptLen in lengths)
+            {
+                var pt         = Enumerable.Range(0, ptLen).Select(i => (Byte) (i ^ 0x5A)).ToArray();
+                var nornSealed = norn.Encrypt(aad, nonce, pt);
+                var rawSealed  = raw.Encrypt(aad, nonce, pt);
+
+                Assert.That(nornSealed, Is.EqualTo(rawSealed).AsCollection,
+                            $"key={KeyLength}, aad={aadLen}, pt={ptLen}");
+                Assert.That(norn.Decrypt(aad, nonce, rawSealed), Is.EqualTo(pt).AsCollection);
+                Assert.That(raw.Decrypt(aad, nonce, nornSealed), Is.EqualTo(pt).AsCollection);
+            }
+        }
 
     }
 

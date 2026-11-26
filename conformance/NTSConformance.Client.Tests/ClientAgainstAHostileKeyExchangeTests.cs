@@ -567,6 +567,70 @@ public class ClientAgainstAHostileKeyExchangeTests
 
     }
 
+
+    /// <summary>
+    /// A valid NTS-KE response dripped one byte per TLS record must be reassembled cleanly by
+    /// <see cref="NTSClient"/> and yield a usable session.
+    /// </summary>
+    [Test]
+    public async Task OneByteFragmentedResponse_IsReassembledAndAccepted()
+    {
+
+        await using var server = ScriptedNtsKeServer.Start(
+                                     Respond:        Reply(AGoodReply()),
+                                     WriteChunkSize: 1
+                                 );
+
+        var result = await new NTSClient(
+                               DomainName.Localhost,
+                               NTSKE_Port:                  server.Port,
+                               IPVersionPreference:         IPVersionPreference.IPv4Only,
+                               Timeout:                     TimeSpan.FromSeconds(10),
+                               RemoteCertificateValidator:  (_, _, _, _, _) => TLSValidationResult.Success()
+                           ).GetNTSKERecords();
+
+        Assert.Multiple(() => {
+            Assert.That(result.Success,                      Is.True, result.ErrorMessage);
+            Assert.That(result.Response?.Cookies.Any(),      Is.True, "cookies must survive 1-byte TLS record fragmentation");
+            Assert.That(result.Response?.AEADAlgorithm,      Is.EqualTo(AEADAlgorithms.AES_SIV_CMAC_256));
+        });
+
+    }
+
+
+    /// <summary>
+    /// Slowloris defense: a peer that sends only a partial NTS-KE record header and then stalls
+    /// without closing must cause <see cref="NTSClient"/> to fail within its timeout rather than
+    /// hanging indefinitely.
+    /// </summary>
+    [Test]
+    public async Task StalledPartialResponse_TimesOutCleanly()
+    {
+
+        await using var server = ScriptedNtsKeServer.Start(
+                                     Respond:         _ => [ 0x80, 0x01, 0x00, 0x02 ], // header without body or EndOfMessage
+                                     StallAfterWrite: true
+                                 );
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = await new NTSClient(
+                               DomainName.Localhost,
+                               NTSKE_Port:                  server.Port,
+                               IPVersionPreference:         IPVersionPreference.IPv4Only,
+                               Timeout:                     TimeSpan.FromMilliseconds(750),
+                               RemoteCertificateValidator:  (_, _, _, _, _) => TLSValidationResult.Success()
+                           ).GetNTSKERecords();
+
+        stopwatch.Stop();
+
+        Assert.Multiple(() => {
+            Assert.That(result.Success,        Is.False, "a stalled partial reply cannot succeed");
+            Assert.That(stopwatch.Elapsed,     Is.LessThan(TimeSpan.FromSeconds(5)), "client must honour its timeout against a stalling peer");
+        });
+
+    }
+
     #endregion
 
 }

@@ -236,4 +236,59 @@ public class CookieReplenishmentTests
 
     }
 
+
+    /// <summary>
+    /// RFC 8915 §5.3 / §5.7: every NTS-protected request MUST carry a Unique Identifier extension
+    /// field of at least 32 octets. A request carrying a valid cookie and authenticator without
+    /// a Unique Identifier (or with one shorter than 32 octets) MUST draw an NTS NAK rather than
+    /// an authenticated response.
+    /// </summary>
+    [TestCase(null, TestName = "NtsRequestWithoutUniqueIdentifier_DrawsNtsNak")]
+    [TestCase(16,   TestName = "NtsRequestWithShortUniqueIdentifier_DrawsNtsNak")]
+    public async Task NtsRequestWithMissingOrShortUniqueIdentifier_DrawsNtsNak(Int32? UniqueIdLength)
+    {
+
+        if (fixture is null)
+        {
+            Assert.Fail("the server fixture did not start");
+            return;
+        }
+
+        var client = fixture.CreateClient(TimeSpan.FromSeconds(10),
+                                          aeadAlgorithms: [ AEADAlgorithms.AES_SIV_CMAC_256 ]);
+
+        var keResult = await client.GetNTSKERecords();
+        Assert.That(keResult.Success, Is.True, $"NTS-KE failed: {keResult.ErrorMessage}");
+
+        var keResponse = keResult.Response!;
+        var cookie     = keResponse.Cookies.First();
+
+        var requestPacket = new RawNtpPacket {
+                                LeapIndicator     = RawNtpLeapIndicator.NoWarning,
+                                Version           = 4,
+                                Mode              = RawNtpMode.Client,
+                                Poll              = 6,
+                                TransmitTimestamp = 0xE800_0000_0000_5678UL
+                            };
+
+        if (UniqueIdLength is { } len)
+            requestPacket.ExtensionFields.Add(
+                RawNtsExtensionFields.UniqueIdentifier(Enumerable.Repeat((Byte) 0xAB, len).ToArray())
+            );
+
+        requestPacket.ExtensionFields.Add(RawNtsExtensionFields.NtsCookie(cookie));
+        RawNtsExtensionFields.AppendAuthenticator(requestPacket, keResponse.C2SKey);
+
+        var response = RawNtpExchange.Exchange(requestPacket, "127.0.0.1", fixture.NTPPort, timeout: TimeSpan.FromSeconds(10));
+
+        Assert.Multiple(() => {
+
+            Assert.That(response.IsKissOfDeath, Is.True, "missing/short Unique Identifier must draw a Kiss-o'-Death");
+            Assert.That(response.KissCode,      Is.EqualTo("NTSN"), "missing/short Unique Identifier must draw NTSN NAK");
+            Assert.That(response.UniqueIdentifier, Is.Null, "an absent or implausibly short Unique Identifier must not be echoed in the NAK");
+
+        });
+
+    }
+
 }

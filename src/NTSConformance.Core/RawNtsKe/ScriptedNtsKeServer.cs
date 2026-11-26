@@ -117,6 +117,8 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
     private readonly Task                                                   acceptLoop;
     private readonly Boolean                                                offerAlpn;
     private readonly SslProtocols                                           enabledSslProtocols;
+    private readonly Int32?                                                 writeChunkSize;
+    private readonly Boolean                                                stallAfterWrite;
     private          Int32                                                  connectionsClosedWithoutRequest;
 
     #endregion
@@ -191,7 +193,9 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
                                 System.Security.Cryptography.X509Certificates.X509Certificate2       Certificate,
                                 Func<CapturedNtsKeRequest, Byte[]?>                                  Respond,
                                 Boolean                                                              OfferAlpn,
-                                SslProtocols                                                         EnabledSslProtocols)
+                                SslProtocols                                                         EnabledSslProtocols,
+                                Int32?                                                               WriteChunkSize,
+                                Boolean                                                              StallAfterWrite)
     {
 
         this.listener             = Listener;
@@ -199,6 +203,8 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
         this.respond              = Respond;
         this.offerAlpn            = OfferAlpn;
         this.enabledSslProtocols  = EnabledSslProtocols;
+        this.writeChunkSize       = WriteChunkSize;
+        this.stallAfterWrite      = StallAfterWrite;
         this.Port         = IPPort.Parse(((IPEndPoint) Listener.LocalEndpoint).Port);
         this.acceptLoop   = Task.Run(AcceptLoop);
 
@@ -229,10 +235,20 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
     /// permits; naming an older one is how a test finds out whether a client will be talked down
     /// to it.
     /// </param>
+    /// <param name="WriteChunkSize">
+    /// When set, write the response in chunks of at most this many octets (flushing after each
+    /// chunk) to test TLS record fragmentation (e.g. 1 byte per record).
+    /// </param>
+    /// <param name="StallAfterWrite">
+    /// When true, hold the connection open after sending the response (e.g. a partial record)
+    /// until the peer closes or times out, exercising client-side slowloris timeout handling.
+    /// </param>
     public static ScriptedNtsKeServer Start(TestCertificate?                      Certificate           = null,
                                             Func<CapturedNtsKeRequest, Byte[]?>?  Respond               = null,
                                             Boolean                               OfferAlpn             = true,
-                                            SslProtocols?                         EnabledSslProtocols   = null)
+                                            SslProtocols?                         EnabledSslProtocols   = null,
+                                            Int32?                                WriteChunkSize        = null,
+                                            Boolean                               StallAfterWrite       = false)
     {
 
         // Port 0 and read back what was bound. Norn's server cannot do this — hence FreePort and
@@ -246,7 +262,9 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
                    (Certificate ?? TestCertificate.Generate("nts-ke.test", [ "nts-ke.test" ])).ToDotNetWithPrivateKey(),
                    Respond ?? Mirror,
                    OfferAlpn,
-                   EnabledSslProtocols ?? SslProtocols.Tls13
+                   EnabledSslProtocols ?? SslProtocols.Tls13,
+                   WriteChunkSize,
+                   StallAfterWrite
                );
 
     }
@@ -408,9 +426,24 @@ public sealed class ScriptedNtsKeServer : IAsyncDisposable
 
                 if (response is not null)
                 {
-                    await tlsStream.WriteAsync(response, timeout.Token);
-                    await tlsStream.FlushAsync(timeout.Token);
+                    if (writeChunkSize is > 0 && writeChunkSize.Value < response.Length)
+                    {
+                        for (var offset = 0; offset < response.Length; offset += writeChunkSize.Value)
+                        {
+                            var count = Math.Min(writeChunkSize.Value, response.Length - offset);
+                            await tlsStream.WriteAsync(response.AsMemory(offset, count), timeout.Token);
+                            await tlsStream.FlushAsync(timeout.Token);
+                        }
+                    }
+                    else
+                    {
+                        await tlsStream.WriteAsync(response, timeout.Token);
+                        await tlsStream.FlushAsync(timeout.Token);
+                    }
                 }
+
+                if (stallAfterWrite)
+                    await Task.Delay(Timeout.Infinite, timeout.Token);
 
             }
 

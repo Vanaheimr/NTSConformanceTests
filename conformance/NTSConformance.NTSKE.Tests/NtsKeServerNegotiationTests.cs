@@ -512,6 +512,39 @@ public class NtsKeServerNegotiationTests
 
     }
 
+
+    /// <summary>
+    /// A valid NTS-KE request delivered one byte per TLS record must be reassembled cleanly by
+    /// the server and answered with cookies and the negotiated AEAD algorithm.
+    /// </summary>
+    [Test]
+    public async Task OneByteFragmentedRequest_IsReassembledAndAnswered()
+    {
+
+        if (fixture is null)
+            throw new InvalidOperationException("the server fixture did not start");
+
+        var request  = RawNtsKeCodec.ClientRequest(AeadAesSivCmac256);
+
+        var exchange = await RawNtsKeClient.ExchangeAsync("127.0.0.1",
+                                                          fixture.NTSKEPort,
+                                                          request,
+                                                          TimeSpan.FromSeconds(15),
+                                                          writeChunkSize: 1);
+
+        Assert.Multiple(() => {
+
+            Assert.That(exchange.HandshakeSucceeded,    Is.True,  exchange.ToString());
+            Assert.That(exchange.ClosedWithoutResponse, Is.False, exchange.ToString());
+            Assert.That(exchange.ErrorCode,             Is.Null,  $"1-byte fragmented valid request must succeed\n{exchange}");
+            Assert.That(exchange.RecordsOfType(RawNtsKeRecordTypes.NewCookieForNtpv4).Any(),
+                        Is.True,
+                        $"expected cookies in response to 1-byte fragmented NTS-KE request\n{exchange}");
+
+        });
+
+    }
+
     #endregion
 
 }

@@ -335,4 +335,80 @@ public class ClientResponseValidationTests
 
     }
 
+
+    /// <summary>
+    /// Wire-level replay defense (RFC 8915 §5.3): replaying a genuine, previously authenticated
+    /// server response verbatim in reply to a fresh client query MUST be rejected by
+    /// <see cref="NTSClient"/> because its Unique Identifier does not match the new query.
+    /// </summary>
+    [Test]
+    public async Task ReplayedAuthenticatedResponseOnTheWire_IsRejectedByClient()
+    {
+
+        if (goodResponse?.ResponseBytes is null || ntsKeResponse is null)
+        {
+            Assert.Fail("no reference exchange was captured");
+            return;
+        }
+
+        var replayedBytes = goodResponse.ResponseBytes;
+
+        using var replayServer = new System.Net.Sockets.UdpClient(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 0));
+        var replayPort = org.GraphDefined.Vanaheimr.Hermod.IPPort.Parse(
+                             ((System.Net.IPEndPoint) replayServer.Client.LocalEndPoint!).Port
+                         );
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var responderTask = Task.Run(async () => {
+            try
+            {
+                var received = await replayServer.ReceiveAsync(cts.Token);
+                await replayServer.SendAsync(replayedBytes, received.RemoteEndPoint, cts.Token);
+            }
+            catch (OperationCanceledException)
+            { }
+        }, cts.Token);
+
+        var portBytes = new Byte[] {
+                            (Byte) (replayPort.ToUInt16() >> 8),
+                            (Byte) (replayPort.ToUInt16() & 0xFF)
+                        };
+
+        var replayRecords = ntsKeResponse.NTSKERecords.
+                                Where(r => r.Type is not NTSKE_RecordTypes.NTPv4ServerNegotiation
+                                                 and not NTSKE_RecordTypes.NTPv4PortNegotiation
+                                                 and not NTSKE_RecordTypes.EndOfMessage).
+                                Append(NTSKE_Record.NTPv4ServerNegotiation(System.Text.Encoding.ASCII.GetBytes("127.0.0.1"))).
+                                Append(NTSKE_Record.NTPv4PortNegotiation(portBytes)).
+                                Append(NTSKE_Record.EndOfMessage).
+                                ToArray();
+
+        var replayKeResponse = new NTSKE_Response(
+                                   replayRecords,
+                                   ntsKeResponse.C2SKey,
+                                   ntsKeResponse.S2CKey
+                               );
+
+        var replayClient = new NTSClient(
+                               org.GraphDefined.Vanaheimr.Hermod.DNS.DomainName.Parse("127.0.0.1"),
+                               NTP_Port:            replayPort,
+                               IPVersionPreference: org.GraphDefined.Vanaheimr.Hermod.IPVersionPreference.IPv4Only,
+                               Timeout:             TimeSpan.FromSeconds(2)
+                           );
+
+        var result = await replayClient.QueryTime(
+                         NTSKEResponse: replayKeResponse,
+                         Timeout:       TimeSpan.FromSeconds(2),
+                         CancellationToken: cts.Token
+                     );
+
+        await responderTask;
+
+        Assert.That(result.Success,
+                    Is.False,
+                    "a genuine authenticated response replayed verbatim to a fresh query must be rejected");
+
+    }
+
 }

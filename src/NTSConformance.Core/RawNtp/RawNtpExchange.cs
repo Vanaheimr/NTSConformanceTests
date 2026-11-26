@@ -25,14 +25,15 @@ public static class RawNtpExchange
     /// </param>
     /// <param name="timeout">How long to wait for the reply.</param>
     /// <param name="localAddress">The address to send from — see <see cref="TryExchange"/>.</param>
-    public static RawNtpPacket Exchange(RawNtpPacket    request,
-                                        String          host,
-                                        IPPort          port,
-                                        AddressFamily?  addressFamily   = null,
-                                        TimeSpan?       timeout         = null,
-                                        IPAddress?      localAddress    = null)
+    public static RawNtpPacket Exchange(RawNtpPacket        request,
+                                        String              host,
+                                        IPPort              port,
+                                        AddressFamily?      addressFamily   = null,
+                                        TimeSpan?           timeout         = null,
+                                        IPAddress?          localAddress    = null,
+                                        RawNtpReadOptions?  readOptions     = null)
 
-        => TryExchange(request, host, port, addressFamily, timeout, localAddress)
+        => TryExchange(request, host, port, addressFamily, timeout, localAddress, readOptions)
                ?? throw new SocketException((Int32) SocketError.TimedOut);
 
 
@@ -57,12 +58,13 @@ public static class RawNtpExchange
     /// arrive as nothing at all. Waiting for a reply that should never come is slow, so keep the
     /// timeout short when that is the expected outcome.
     /// </remarks>
-    public static RawNtpPacket? TryExchange(RawNtpPacket    request,
-                                            String          host,
-                                            IPPort          port,
-                                            AddressFamily?  addressFamily   = null,
-                                            TimeSpan?       timeout         = null,
-                                            IPAddress?      localAddress    = null)
+    public static RawNtpPacket? TryExchange(RawNtpPacket        request,
+                                            String              host,
+                                            IPPort              port,
+                                            AddressFamily?      addressFamily   = null,
+                                            TimeSpan?           timeout         = null,
+                                            IPAddress?          localAddress    = null,
+                                            RawNtpReadOptions?  readOptions     = null)
     {
 
         var family    = localAddress?.AddressFamily ?? addressFamily ?? AddressFamily.InterNetwork;
@@ -95,7 +97,7 @@ public static class RawNtpExchange
             return null;
         }
 
-        if (!RawNtpReader.TryRead(received, out var response, out var errorResponse, RawNtpReadOptions.Lenient))
+        if (!RawNtpReader.TryRead(received, out var response, out var errorResponse, readOptions ?? RawNtpReadOptions.Strict))
             throw new InvalidOperationException($"the response could not be read: {errorResponse}\n{Bytes.Dump(received)}");
 
         return response!;

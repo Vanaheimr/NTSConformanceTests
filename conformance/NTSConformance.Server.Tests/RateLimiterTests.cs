@@ -660,6 +660,44 @@ public class RateLimiterTests
 
     }
 
+
+    /// <summary>
+    /// When configured with <c>MaxAnswersPerSecond</c>, a spoofed-source flood across more
+    /// addresses than the table holds cannot bypass the global answer ceiling by evicting entries.
+    /// </summary>
+    [Test]
+    public void GlobalAnswerCap_BoundsAnswersUnderSpoofedEvictionFlood()
+    {
+
+        var clock   = new ManualClock();
+        var limiter = new NTPRateLimiter(MinimumInterval:      TimeSpan.FromSeconds(2),
+                                         Burst:                4,
+                                         MaxClients:           16,
+                                         MaxKissesPerSecond:   0,
+                                         MaxAnswersPerSecond:  25,
+                                         TimeProvider:         clock,
+                                         Leak:                 2);
+
+        var answered = 0;
+
+        for (var i = 0; i < 10_000; i++)
+        {
+            if (limiter.Check(Address(i)) == RateLimitDecision.Answer)
+                answered++;
+        }
+
+        Assert.That(answered,
+                    Is.LessThanOrEqualTo(25),
+                    "global answer cap must hold even when 10,000 distinct forged source addresses continuously evict the table");
+
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.That(limiter.Check(Address(10_001)),
+                    Is.EqualTo(RateLimitDecision.Answer),
+                    "the global answer budget should refill after one second");
+
+    }
+
     #endregion
 
 }
