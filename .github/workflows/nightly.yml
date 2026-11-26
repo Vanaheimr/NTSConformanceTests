@@ -41,8 +41,15 @@ jobs:
         include:
           - os: windows-latest
             leg: windows-latest
+          # SYS_TIME for the same reason as in upstream-tools below: without it
+          # chronyd (server fixture and rate-limit client alike) and the
+          # ntpd-rs client exit at startup, and 13 of the 30 interop checks
+          # skipped themselves every night until the skip guard in the interop
+          # step made that visible on 2026-11-26.
           - os: ubuntu-latest
-            container: debian:13
+            container:
+              image: debian:13
+              options: --cap-add=SYS_TIME
             leg: debian-13-container
     name: full-suite (${{ matrix.leg }})
     runs-on: ${{ matrix.os }}
@@ -292,11 +299,11 @@ jobs:
     # skipped themselves.
     #
     # Worth knowing before changing this: the fatality is not new, 4.6.1 has
-    # the identical LOGS_FATAL in sys_timex.c, and 4.6.1 nevertheless starts in
-    # this same image -- the pinned-peer lane above proves it every night. So
-    # 4.9 reaches a clock-stepping call that 4.6.1 does not. A likely candidate
-    # is the clock-interference check 4.9 added to that same function, which
-    # 4.6.1 does not have, but that is a guess and the EPERM is the fact.
+    # the identical LOGS_FATAL in sys_timex.c. An earlier version of this
+    # comment claimed 4.6.1 starts without the capability because the pinned
+    # lane passed -- but that lane skipped every chrony check too, it was just
+    # green about it. Since 2026-11-26 both lanes get SYS_TIME and a skip on
+    # Linux fails the step.
     #
     # Granting the capability rather than passing chronyd -x: the fixtures are
     # shared with the pinned lane, and the whole value of this one is that the
