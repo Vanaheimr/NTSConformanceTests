@@ -322,4 +322,60 @@ public class AesGcmSivConformanceTests
 
     #endregion
 
+    #region Authentication failures & input validation
+
+    [Test]
+    public void TamperedCiphertextTagOrAad_ThrowsCryptographicException()
+    {
+
+        var key       = Bytes.FromHex("01000000000000000000000000000000");
+        var wrongKey  = Bytes.FromHex("02000000000000000000000000000000");
+        var nonce     = Bytes.FromHex("030000000000000000000000");
+        var aad       = Bytes.FromHex("01020304");
+        var plaintext = Bytes.FromHex("1122334455667788");
+
+        var cipher    = new AES_GCM_SIV(key);
+        var sealed_   = cipher.Encrypt(aad, nonce, plaintext);
+
+        var flippedCiphertext = (Byte[]) sealed_.Clone();
+        flippedCiphertext[0] ^= 0x01;
+
+        var flippedTag = (Byte[]) sealed_.Clone();
+        flippedTag[^1] ^= 0x80;
+
+        var flippedAad = (Byte[]) aad.Clone();
+        flippedAad[0] ^= 0x01;
+
+        Assert.Multiple(() => {
+
+            Assert.That(() => cipher.Decrypt(aad, nonce, flippedCiphertext),
+                        Throws.TypeOf<System.Security.Cryptography.CryptographicException>(),
+                        "tampered ciphertext must throw CryptographicException");
+
+            Assert.That(() => cipher.Decrypt(aad, nonce, flippedTag),
+                        Throws.TypeOf<System.Security.Cryptography.CryptographicException>(),
+                        "tampered tag must throw CryptographicException");
+
+            Assert.That(() => cipher.Decrypt(flippedAad, nonce, sealed_),
+                        Throws.TypeOf<System.Security.Cryptography.CryptographicException>(),
+                        "tampered AAD must throw CryptographicException");
+
+            Assert.That(() => new AES_GCM_SIV(wrongKey).Decrypt(aad, nonce, sealed_),
+                        Throws.TypeOf<System.Security.Cryptography.CryptographicException>(),
+                        "wrong key must throw CryptographicException");
+
+            Assert.That(() => cipher.Encrypt(aad, new Byte[11], plaintext),
+                        Throws.TypeOf<ArgumentException>(),
+                        "nonce shorter than 12 octets must be rejected");
+
+            Assert.That(() => cipher.Encrypt(aad, new Byte[13], plaintext),
+                        Throws.TypeOf<ArgumentException>(),
+                        "nonce longer than 12 octets must be rejected");
+
+        });
+
+    }
+
+    #endregion
+
 }

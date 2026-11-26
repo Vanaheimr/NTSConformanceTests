@@ -378,7 +378,8 @@ public class NtsKeServerNegotiationTests
 
         var exchange = await Exchange(request);
 
-        Assert.That(exchange.HandshakeSucceeded, Is.True, exchange.ToString());
+        Assert.That(exchange.HandshakeSucceeded,    Is.True,  exchange.ToString());
+        Assert.That(exchange.ClosedWithoutResponse, Is.False, $"the server hung up without sending any NTS-KE records\n{exchange}");
 
         // Refusing outright satisfies the rule.
         if (exchange.ErrorCode is not null)
@@ -404,13 +405,11 @@ public class NtsKeServerNegotiationTests
     /// algorithm the server chooses to use. It is empty if the server supports none of the
     /// algorithms offered."
     ///
-    /// A client offering only AES-128-GCM-SIV (30), which Norn does not implement, must get
-    /// back an empty AEAD record — not AES-SIV-CMAC-256 (15), which it never offered. A
-    /// client told 15 would either fail or, worse, proceed with an algorithm the server
-    /// picked unilaterally.
+    /// A client offering only AEAD_AES_128_GCM (1), which Norn does not implement, must get
+    /// back an empty AEAD record (or an Error) — never an algorithm it did not offer.
     ///
     /// Note this does not conflict with §4.1.5's requirement that the record not be empty
-    /// when the client <em>does</em> offer 15: that case is covered by
+    /// when the client <em>does</em> offer a supported algorithm: that case is covered by
     /// <see cref="AeadSelection_ComesFromTheClientsList"/>.
     /// </summary>
     [Test]
@@ -419,13 +418,14 @@ public class NtsKeServerNegotiationTests
 
         var request  = RawNtsKeCodec.Encode([
                            RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv4),
-                           RawNtsKeRecord.AeadAlgorithmNegotiation(AeadAes128GcmSiv),
+                           RawNtsKeRecord.AeadAlgorithmNegotiation(AeadAes128Gcm),
                            RawNtsKeRecord.EndOfMessage()
                        ]);
 
         var exchange = await Exchange(request);
 
-        Assert.That(exchange.HandshakeSucceeded, Is.True, exchange.ToString());
+        Assert.That(exchange.HandshakeSucceeded,    Is.True,  exchange.ToString());
+        Assert.That(exchange.ClosedWithoutResponse, Is.False, $"the server hung up without sending any NTS-KE records\n{exchange}");
 
         if (exchange.ErrorCode is not null)
             Assert.Pass($"the server refused the unsupported algorithm with Error code {exchange.ErrorCode}");
@@ -436,10 +436,10 @@ public class NtsKeServerNegotiationTests
             Assert.Pass("the server sent no AEAD Algorithm Negotiation record, so it selected nothing");
 
         Assert.That(RawNtsKeCodec.ReadUInt16Body(aead!),
-                    Is.SubsetOf(new UInt16[] { AeadAes128GcmSiv }),
-                    $"the client offered only AEAD {AeadAes128GcmSiv}, so the server must either " +
-                    $"select that or send an empty record — never an algorithm the client did not " +
-                    $"offer\n{exchange}");
+                    Is.Empty,
+                    $"the client offered only unsupported AEAD {AeadAes128Gcm}, so the server must " +
+                    $"send an empty AEAD Algorithm Negotiation record — never an algorithm the " +
+                    $"client did not offer\n{exchange}");
 
     }
 
@@ -462,7 +462,8 @@ public class NtsKeServerNegotiationTests
 
         var exchange = await Exchange(request);
 
-        Assert.That(exchange.HandshakeSucceeded, Is.True, exchange.ToString());
+        Assert.That(exchange.HandshakeSucceeded,    Is.True,  exchange.ToString());
+        Assert.That(exchange.ClosedWithoutResponse, Is.False, $"the server hung up without sending any NTS-KE records\n{exchange}");
 
         if (exchange.ErrorCode is not null)
             Assert.Pass($"the server refused the request with Error code {exchange.ErrorCode}");
@@ -470,6 +471,44 @@ public class NtsKeServerNegotiationTests
         Assert.That(exchange.RecordsOfType(RawNtsKeRecordTypes.NewCookieForNtpv4).Any(),
                     Is.False,
                     $"NTPv4 cookies were issued although NTPv4 was never negotiated\n{exchange}");
+
+    }
+
+
+    /// <summary>
+    /// A valid NTS-KE request larger than 4096 octets (still fitting in a single TLS 1.3 record
+    /// up to 16 KiB) must be read completely without timing out.
+    ///
+    /// Regression guard for NTSKEMessageReader reading into a 4096-octet buffer while
+    /// BouncyCastle decrypted a larger TLS record into its internal plaintext queue and the
+    /// underlying OS socket had 0 remaining bytes, causing WaitForReadableAsync to block until
+    /// timeout.
+    /// </summary>
+    [Test]
+    public async Task RequestLargerThan4096Octets_IsReadCompletelyWithoutTimeout()
+    {
+
+        var paddingRecord = new RawNtsKeRecord(IsCritical: false, RecordType: 0x4500, Body: new Byte[5000]);
+
+        var request       = RawNtsKeCodec.Encode([
+                                RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv4),
+                                RawNtsKeRecord.AeadAlgorithmNegotiation(AeadAesSivCmac256),
+                                paddingRecord,
+                                RawNtsKeRecord.EndOfMessage()
+                            ]);
+
+        var exchange      = await Exchange(request);
+
+        Assert.Multiple(() => {
+
+            Assert.That(exchange.HandshakeSucceeded,    Is.True,  exchange.ToString());
+            Assert.That(exchange.ClosedWithoutResponse, Is.False, exchange.ToString());
+            Assert.That(exchange.ErrorCode,             Is.Null,  $"a valid >4096-octet request with a non-critical unknown record must succeed\n{exchange}");
+            Assert.That(exchange.RecordsOfType(RawNtsKeRecordTypes.NewCookieForNtpv4).Any(),
+                        Is.True,
+                        $"expected cookies in response to >4096-octet NTS-KE request\n{exchange}");
+
+        });
 
     }
 

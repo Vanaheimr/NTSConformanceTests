@@ -371,6 +371,38 @@ public class CookieConfidentialityTests
 
     }
 
+
+    /// <summary>
+    /// Re-sealing a cookie under a newly rotated master key whose <c>NotBefore</c> is later
+    /// than the cookie's original creation timestamp must produce a cookie that passes
+    /// <see cref="NTSCookie.TryParse(Byte[], IReadOnlyDictionary{UInt64, MasterKey}?, out NTSCookie?, out String?)"/>
+    /// under the new key.
+    /// </summary>
+    [Test]
+    public void CookieResealedUnderRotatedMasterKey_StillUnsealsCleanly()
+    {
+
+        var now      = DateTimeOffset.UtcNow;
+        var oldKey   = new MasterKey(1, RandomNumberGenerator.GetBytes(32), now.AddDays(-2), now.AddDays(-1));
+        var newKey   = new MasterKey(2, RandomNumberGenerator.GetBytes(32), now.AddHours(-1), now.AddDays(1));
+
+        var original = NTSCookie.Create(oldKey, C2SKey, S2CKey, AEADAlgorithms.AES_SIV_CMAC_256, TestClock.FrozenAt(now.AddHours(-36)));
+        var resealed = original.Encrypt(newKey);
+
+        var masterKeys = new Dictionary<UInt64, MasterKey> { [newKey.Id] = newKey };
+
+        Assert.That(NTSCookie.TryParse(resealed, masterKeys, out var parsed, out var errorResponse),
+                    Is.True,
+                    $"a cookie re-sealed under a newer master key must unseal cleanly: {errorResponse}");
+
+        Assert.Multiple(() => {
+            Assert.That(parsed!.MasterKeyId, Is.EqualTo(newKey.Id));
+            Assert.That(parsed.C2SKey,       Is.EqualTo(C2SKey).AsCollection);
+            Assert.That(parsed.S2CKey,       Is.EqualTo(S2CKey).AsCollection);
+        });
+
+    }
+
     #endregion
 
     #region Round-trip under the correct key

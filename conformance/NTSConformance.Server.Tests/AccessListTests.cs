@@ -570,6 +570,41 @@ public class AccessListTests
 
     }
 
+
+    /// <summary>
+    /// Denying all of IPv6 (<c>::/0</c>) on a dual-stack socket must deny IPv6 clients without
+    /// accidentally denying IPv4 clients reported by the OS as IPv4-mapped IPv6 addresses
+    /// (<c>::ffff:a.b.c.d</c>).
+    /// </summary>
+    [Test]
+    public async Task DualStack_DenyAllIPv6_StillAllowsIPv4Clients()
+    {
+
+        var denyIPv6Only = new NTPAccessList(Deny: [ IPNetwork.Parse("::/0") ]);
+
+        await using var fixture = await StartAsync(denyIPv6Only);
+
+        var ipv6Answer = AskTheTime(fixture, IPv6, Silence);
+        var ipv4Answer = AskTheTime(fixture, IPv4);
+
+        Assert.Multiple(() => {
+
+            Assert.That(denyIPv6Only.Allows(IPAddress.Parse("::ffff:127.0.0.1")),
+                        Is.True,
+                        "IPv4-mapped IPv6 address must be evaluated as IPv4 and not matched by ::/0");
+
+            Assert.That(ipv6Answer,
+                        Is.Null,
+                        $"IPv6 ::1 must be denied by ::/0, got {Describe(ipv6Answer)}");
+
+            Assert.That(ipv4Answer?.Mode,
+                        Is.EqualTo(RawNtpMode.Server),
+                        $"IPv4 127.0.0.1 must remain allowed when only ::/0 is denied, got {Describe(ipv4Answer)}");
+
+        });
+
+    }
+
     #endregion
 
 }

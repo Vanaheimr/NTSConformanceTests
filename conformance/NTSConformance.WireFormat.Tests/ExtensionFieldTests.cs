@@ -409,6 +409,59 @@ public class ExtensionFieldTests
 
     }
 
+
+    /// <summary>
+    /// RFC 7822 §7.5.1.4: a non-last extension field may be as short as 16 octets total
+    /// (4-octet header + 12-octet value) as long as the last field reaches 28 octets.
+    ///
+    /// Regression guard: <c>NTPExtension</c> used to enforce <c>Value.Length &gt;= 16</c>
+    /// (20 octets total), throwing an uncaught <see cref="ArgumentOutOfRangeException"/> on
+    /// valid 16-octet fields that had already passed <c>NTPExtensionFieldValidator</c>.
+    /// </summary>
+    [Test]
+    public void NonLastFieldOfExactly16Octets_IsAcceptedWithoutThrowing()
+    {
+
+        var shortField = new RawExtensionField(0x0999, new Byte[12]); // 4 + 12 = 16 octets
+        var trailing   = WellFormedUniqueIdentifier();                 // 4 + 32 = 36 octets (>= 28)
+        var bytes      = RawNtpWriter.Write(ServerPacketWith(shortField, trailing));
+
+        Assert.That(NTPResponse.TryParse(bytes, out var parsed, out var errorResponse),
+                    Is.True,
+                    $"a valid 16-octet non-last extension field must parse cleanly: {errorResponse}");
+
+        Assert.That(parsed!.Extensions.Count(), Is.EqualTo(2));
+
+    }
+
+
+    /// <summary>
+    /// When a caller passes <c>ExpectedUniqueId</c> to <see cref="NTPResponse.TryParse"/>,
+    /// a response with a different (or missing) Unique Identifier must be rejected.
+    /// </summary>
+    [Test]
+    public void ExpectedUniqueId_IsEnforcedByNTPResponseTryParse()
+    {
+
+        var expectedUid = Enumerable.Repeat((Byte) 0xAA, 32).ToArray();
+        var wrongUid    = Enumerable.Repeat((Byte) 0xBB, 32).ToArray();
+
+        var bytes       = RawNtpWriter.Write(ServerPacketWith(RawNtsExtensionFields.UniqueIdentifier(expectedUid)));
+
+        Assert.Multiple(() => {
+
+            Assert.That(NTPResponse.TryParse(bytes, out _, out var okErr, ExpectedUniqueId: expectedUid),
+                        Is.True,
+                        $"matching ExpectedUniqueId should succeed: {okErr}");
+
+            Assert.That(NTPResponse.TryParse(bytes, out _, out _, ExpectedUniqueId: wrongUid),
+                        Is.False,
+                        "mismatched ExpectedUniqueId must be rejected by NTPResponse.TryParse");
+
+        });
+
+    }
+
     #endregion
 
 }
