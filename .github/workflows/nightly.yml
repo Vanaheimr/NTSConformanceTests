@@ -132,7 +132,11 @@ jobs:
           set -e
           [ "${rc}" -eq 0 ] || exit "${rc}"
           if [ "${{ runner.os }}" = "Linux" ]; then
-            skipped=$(grep -oE 'Skipped: +[0-9]+' interop.out | grep -oE '[0-9]+' | tail -1)
+            # '|| true': dotnet test prints no "Skipped:" line at all when
+            # nothing skipped, grep then exits 1, and under bash -e -o pipefail
+            # that failed assignment ends the step -- the guard went red on the
+            # very first run in which every check passed (2026-11-26).
+            skipped=$(grep -oE 'Skipped: +[0-9]+' interop.out | grep -oE '[0-9]+' | tail -1 || true)
             : "${skipped:=0}"
             if [ "${skipped}" -ne 0 ]; then
               echo "FAIL: ${skipped} interop checks skipped on Linux although tools are installed."
