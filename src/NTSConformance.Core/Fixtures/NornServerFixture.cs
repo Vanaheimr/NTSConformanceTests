@@ -4,6 +4,7 @@ using org.GraphDefined.Vanaheimr.Hermod.DNS;
 using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 using org.GraphDefined.Vanaheimr.Hermod.SSH;
 using org.GraphDefined.Vanaheimr.Hermod.SSH.Client;
+using org.GraphDefined.Vanaheimr.Norn.NTPv5;
 using org.GraphDefined.Vanaheimr.Norn.NTS;
 
 using HermodIPAddress = org.GraphDefined.Vanaheimr.Hermod.IPAddress;
@@ -112,6 +113,10 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// Advertise the host without a port, so the key exchange sends an NTPv4 Server Negotiation
     /// record and no NTPv4 Port Negotiation record.
     /// </param>
+    /// <param name="ntpv5">
+    /// Whether the server answers NTPv5, after the draft Norn implements. Off by default, as in
+    /// the server itself.
+    /// </param>
     /// <remarks>
     /// That combination is the whole of RFC 8915 § 4.1.8's default: "If no record of this type
     /// is sent, the client SHALL assume a default of 123." It looked for a while as though
@@ -133,7 +138,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     Boolean          omitPortNegotiation           = false,
                                                     IEnumerable<AEADAlgorithms>? aeadAlgorithms    = null,
                                                     ISshHostKey?     sshClientKey                  = null,
-                                                    NTPAccessList?   accessList                    = null)
+                                                    NTPAccessList?   accessList                    = null,
+                                                    NTPv5Support     ntpv5                         = NTPv5Support.Disabled)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 
@@ -164,6 +170,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                                 InterleavedMode:               interleavedMode,
                                 RateLimiter:                   rateLimiter,
                                 AccessList:                    accessList,
+                                NTPv5:                         ntpv5,
                                 SupportedAEADAlgorithms:       aeadAlgorithms,
                                 SSHPort:                       sshPort,
                                 SSHAuthenticator:              sshClientKey is null

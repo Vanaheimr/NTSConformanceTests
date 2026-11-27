@@ -247,6 +247,29 @@ change once IANA has assigned it.
 | 9525 §6.3 | Certificate identity: which host names a certificate speaks for — a wildcard covers exactly one label, never the apex and never two; partial and misplaced wildcards are ignored rather than guessed at; the Common Name is not a fallback | ✅ |
 | 6125 | Certificate identity: the configured certificate is presented, and accepted by a third-party client | 🟡 |
 
+### NTPv5 — draft-ietf-ntp-ntpv5-10
+
+Against a draft, and so pinned to one: the suite's own codec (`RawNtpV5/`) is written from the
+text of -10, and a server is asked with the draft's Draft Identification field and nothing
+else. The basic mode only, without authentication, which is what Norn answers so far — on
+`NTPv5Support.Draft` and only where it answers plain NTP, since there is no NTS for NTPv5
+yet. No other implementation reachable from here speaks it: Debian packages none, and the
+IETF 127 interop table has ntpd-rs answering in NTPv4.
+
+| Draft | Focus | |
+|---|---|:--:|
+| §6, §9 | A basic request answered in NTPv5: version, mode, the client cookie copied, no flag the request did not set and none NTPv5 does not know, both timestamps set and in order | ✅ |
+| §6 | The Era is the era of the receive timestamp, 0 today and 1 for a server whose clock is past 2036, with the seconds of that era | ✅ |
+| §5, §6 | Root delay and dispersion in time32 (28 fractional bits) rounded up, on both sides of the half, and infinity for what is 16 s or more | ✅ |
+| §6, §10 | The timescale asked for, or one that exists — never an undefined one | ✅ |
+| §7, §10 | The response exactly as long as the request, however it is padded; an unknown extension field ignored and made up for with a Padding field; a field's Length without the message padding, so odd lengths are read right | ✅ |
+| §7.1 | Answered only for the draft the client named, by its full name: not the previous draft, not a prefix or an extension of the name, not null-terminated, not in capitals, and not a request that names none | ✅ |
+| §7.6 | Server Information: 8 octets, NTPv4 and NTPv5 among the versions, only defined flags | ✅ |
+| §10 | Unknown flags ignored; an unsynchronized server answering only a client that set the Unsynchronized flag, and setting it | ✅ |
+| §6, §10 | Dropped: every mode but 3, a length not divisible by 4, an extension field shorter than its header or past the end | ✅ |
+| §12 | An NTPv4 request with "NTP5DRFT" in its reference timestamp gets it back from a server that speaks NTPv5, and from no other | ✅ |
+| §8, §7.4, §7.3, §11 | Interleaved mode, reference IDs, MAC, NTS for NTPv5 | — |
+
 ### The command line
 
 Norn ships a `norn` executable alongside the library (`libs/Norn/NornCLI`), and this suite
@@ -304,10 +327,11 @@ Deliberately not covered, and why:
   encapsulation buys is hardware timestamping in NICs that timestamp only PTP, which nothing
   on a loopback can show. chrony 4.9 implements it, so the peer would be there if Norn ever
   grew the transport.
-- **NTPv5** — `draft-ietf-ntp-ntpv5-10` (October 2026), Standards Track and still moving: -10
-  alone dropped leap-second announcements, redefined the clock status flag and the Time32
-  format, and replaced the reference-ID Bloom filter. ntpd-rs tracks it draft by draft. There
-  is nothing stable to conform to yet.
+- **NTPv5 beyond the basic mode** — `draft-ietf-ntp-ntpv5-10` (October 2026), Standards Track
+  and still moving: -10 alone dropped leap-second announcements, redefined the clock status
+  flag and the Time32 format, and replaced the reference-ID Bloom filter. What Norn answers of
+  it is tested [above](#ntpv5--draft-ietf-ntp-ntpv5-10), pinned to -10; the interleaved mode,
+  reference IDs, the MAC and NTS for NTPv5 wait for Norn to do them.
 - **RFC 10049 Roughtime** — October 2026, Experimental. A different protocol with a different
   goal: rough time from servers you need not trust individually, on its own port (5319) with
   its own messages, and neither NTP packets nor NTS-KE anywhere in it. Its one point of
@@ -325,6 +349,7 @@ Deliberately not covered, and why:
 build/CommonTestSettings.props           shared MSBuild settings for every test project
 src/NTSConformance.Core/                 the harness
   RawNtp/                                independent RFC 5905 + 7822 codec, and AES-SIV
+  RawNtpV5/                              independent NTPv5 codec, from the text of draft -10
   RawNtsKe/                              independent RFC 8915 §4 record codec, a raw client, a
                                          scripted server that keeps what the client sent, both
                                          also over SSH, and HKDF and the key derivation of
@@ -343,7 +368,7 @@ conformance/
                                          the SSH Key Binding record against the server
   NTSConformance.Client.Tests/           what the client must refuse, which clock it reads, where its query goes,
                                          the SSH Key Binding record against the client
-  NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock, interleaved mode
+  NTSConformance.Server.Tests/           end-to-end, plain NTP, header fields, listen address, clock, interleaved mode, NTPv5
   NTSConformance.Cookies.Tests/          RFC 8915 §6 — opacity, forgery, rotation
   NTSConformance.CLI.Tests/              the `norn` executable, run as a process
 interop/
