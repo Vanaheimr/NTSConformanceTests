@@ -193,6 +193,61 @@ public class TimestampTests
 
     #endregion
 
+
+    #region Era resolution with a clock reset to 1970
+
+    // The clock the era is resolved against, the time the server sent, and what the case is about.
+    private static readonly Object[] ResetClockCases = [
+
+        new Object[] { new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 11, 27, 12, 0, 0, DateTimeKind.Utc), "clock at 1970, server in era 0 (today)"                                   },
+        new Object[] { new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2036,  6,  1, 12, 0, 0, DateTimeKind.Utc), "clock at 1970, server just into era 1, still nearer 1970 than 1900"       },
+        new Object[] { new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2038,  6,  1, 12, 0, 0, DateTimeKind.Utc), "clock at 1970, server past 2038-01-19, its era-0 reading (1902) is nearer" },
+        new Object[] { new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2040,  1,  1,  0, 0, 0, DateTimeKind.Utc), "clock at 1970, server in 2040"                                            },
+        new Object[] { new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2060,  1,  1,  0, 0, 0, DateTimeKind.Utc), "clock at 1970, server in 2060"                                            },
+        new Object[] { new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2040,  1,  1,  0, 0, 0, DateTimeKind.Utc), "clock at 2000, server in 2040"                                            }
+
+    ];
+
+
+    /// <summary>
+    /// RFC 5905 § 6 leaves the era to context, and Norn's context is a clock: it picks the era
+    /// that puts a timestamp nearest to it. That is right while the clock is roughly right, and
+    /// wrong for the device the 2036 discussion is about (IETF 127, "The 2036 rollover in
+    /// practice"): embedded gear without a battery-backed clock, which boots at the Unix epoch
+    /// and asks NTP what time it is. Asking is the point - its clock is wrong because it has
+    /// nothing better yet - so a server's time after 2036 has to come out after 2036. Nearest to
+    /// 1970 puts everything after 2038-01-19 into era 0, and the client would set itself to the
+    /// early 1900s.
+    ///
+    /// ntpd and chrony resolve the era against a fixed point of their own build (ntpd's build
+    /// date, chrony's configure --with-ntp-era) rather than against the clock being corrected.
+    /// The cases the nearest-era rule already gets right are here too, so that a fix for the
+    /// reset clock cannot break them.
+    ///
+    /// Tested on the decoder and not through a client: Norn's ClockOffset resolves the era
+    /// against the machine's own clock, not the client's TimeProvider, so a client given a
+    /// frozen 1970 clock on a 2026 machine never shows the fault a real 1970 machine has.
+    /// </summary>
+    [TestCaseSource(nameof(ResetClockCases))]
+    public void Norn_ResolvesTheEra_EvenWithItsClockResetTo1970(DateTime  ClientClock,
+                                                                DateTime  ServerTime,
+                                                                String    Why)
+    {
+
+        var wireTimestamp = RawNtpTimestamp.FromDateTime(ServerTime, era: RawNtpTimestamp.EraFor(ServerTime));
+
+        var nornDecoded   = NTPPacket.NTPTimestampToDateTime(wireTimestamp, ApproximateTime: ClientClock);
+
+        Assert.That(nornDecoded,
+                    Is.EqualTo(ServerTime).Within(TimeSpan.FromSeconds(1)),
+                    $"{Why}: a server time of {ServerTime:O} carries the seconds count " +
+                    $"{RawNtpTimestamp.Seconds(wireTimestamp)}, which Norn, with its clock at {ClientClock:O}, " +
+                    $"decodes as {nornDecoded:O} - and would set its clock to that");
+
+    }
+
+    #endregion
+
     #region Offset and delay arithmetic
 
     /// <summary>
