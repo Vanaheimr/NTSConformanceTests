@@ -355,3 +355,159 @@ public static class RawUdpExchange
     }
 
 }
+
+
+/// <summary>
+/// The extension fields of draft -10 that carry data of their own, as § 7.4 and § 7.7 to § 7.9
+/// lay them out: requests to send, and readers of what comes back.
+/// </summary>
+public static class RawNtpV5Fields
+{
+
+    #region § 7.4 Reference IDs
+
+    /// <summary>
+    /// § 7.4: a Reference IDs Request for the entries from Index on, as many as DataLength / 8.
+    /// The data is the index and then padding, at least 8 octets and divisible by 8.
+    /// </summary>
+    public static RawNtpV5ExtensionField ReferenceIDsRequest(Byte Index, Int32 DataLength = 256)
+    {
+        var data = new Byte[DataLength];
+        data[0]  = Index;
+        return new (RawNtpV5Draft.ReferenceIDsRequest, data);
+    }
+
+    /// <summary>
+    /// § 7.4: the entries of a Reference IDs Response, each an 8-bit share and a 56-bit ID.
+    /// </summary>
+    public static IReadOnlyList<(Byte Share, UInt64 ReferenceId)> ReferenceIDs(RawNtpV5ExtensionField Response)
+    {
+
+        var entries = new List<(Byte, UInt64)>();
+
+        for (var offset = 0; offset + 8 <= Response.Data.Length; offset += 8)
+            entries.Add((Response.Data[offset],
+                         BinaryPrimitives.ReadUInt64BigEndian(Response.Data.AsSpan(offset)) & 0x00FFFFFFFFFFFFFFUL));
+
+        return entries;
+
+    }
+
+    /// <summary>
+    /// § 7.4: a share encoded as -16 * log2(s), rounded up and clamped to 8 bits.
+    /// </summary>
+    public static Byte EncodeShare(Double Share)
+    {
+
+        if (Share <= 0)
+            return 255;
+
+        var encoded = Math.Ceiling(-16.0 * Math.Log2(Share) - 1e-9);
+
+        return (Byte) Math.Clamp(encoded, 0, 255);
+
+    }
+
+    #endregion
+
+    #region § 7.7 Correction
+
+    /// <summary>
+    /// § 7.7: 28 octets - Origin Correction (64), Origin Path ID (16), Reserved (16), Delay
+    /// Correction (64), Delay Path ID (16), Checksum Complement (16).
+    /// </summary>
+    public static RawNtpV5ExtensionField Correction(Int64   OriginCorrection    = 0,
+                                                    UInt16  OriginPathId        = 0,
+                                                    UInt16  Reserved            = 0,
+                                                    Int64   DelayCorrection     = 0,
+                                                    UInt16  DelayPathId         = 0,
+                                                    UInt16  ChecksumComplement  = 0)
+    {
+
+        var data = new Byte[24];
+        var span = data.AsSpan();
+
+        BinaryPrimitives.WriteInt64BigEndian (span[ 0..], OriginCorrection);
+        BinaryPrimitives.WriteUInt16BigEndian(span[ 8..], OriginPathId);
+        BinaryPrimitives.WriteUInt16BigEndian(span[10..], Reserved);
+        BinaryPrimitives.WriteInt64BigEndian (span[12..], DelayCorrection);
+        BinaryPrimitives.WriteUInt16BigEndian(span[20..], DelayPathId);
+        BinaryPrimitives.WriteUInt16BigEndian(span[22..], ChecksumComplement);
+
+        return new (RawNtpV5Draft.Correction, data);
+
+    }
+
+    public static (Int64 OriginCorrection, UInt16 OriginPathId, UInt16 Reserved, Int64 DelayCorrection, UInt16 DelayPathId)
+        ReadCorrection(RawNtpV5ExtensionField Field)
+
+        => (BinaryPrimitives.ReadInt64BigEndian (Field.Data.AsSpan( 0)),
+            BinaryPrimitives.ReadUInt16BigEndian(Field.Data.AsSpan( 8)),
+            BinaryPrimitives.ReadUInt16BigEndian(Field.Data.AsSpan(10)),
+            BinaryPrimitives.ReadInt64BigEndian (Field.Data.AsSpan(12)),
+            BinaryPrimitives.ReadUInt16BigEndian(Field.Data.AsSpan(20)));
+
+    #endregion
+
+    #region § 7.8 Reference Timestamp, § 7.9 Monotonic Receive Timestamp
+
+    /// <summary>
+    /// § 7.8: 12 octets, the timestamp 0 in a request.
+    /// </summary>
+    public static RawNtpV5ExtensionField ReferenceTimestampRequest()
+        => new (RawNtpV5Draft.ReferenceTimestamp, new Byte[8]);
+
+    public static UInt64 ReadReferenceTimestamp(RawNtpV5ExtensionField Field)
+        => BinaryPrimitives.ReadUInt64BigEndian(Field.Data);
+
+    /// <summary>
+    /// § 7.9: 16 octets, epoch ID and timestamp 0 in a request.
+    /// </summary>
+    public static RawNtpV5ExtensionField MonotonicReceiveTimestampRequest()
+        => new (RawNtpV5Draft.MonotonicReceiveTimestamp, new Byte[12]);
+
+    public static (UInt32 EpochId, UInt64 Timestamp) ReadMonotonicReceiveTimestamp(RawNtpV5ExtensionField Field)
+        => (BinaryPrimitives.ReadUInt32BigEndian(Field.Data),
+            BinaryPrimitives.ReadUInt64BigEndian(Field.Data.AsSpan(4)));
+
+    #endregion
+
+}
+
+
+/// <summary>
+/// One UDP socket for several exchanges, so that the server sees the same client address and
+/// port each time - which the interleaved mode, keyed by the client, needs.
+/// </summary>
+public sealed class RawUdpSession : IDisposable
+{
+
+    private readonly UdpClient udp = new (AddressFamily.InterNetwork);
+
+    public RawUdpSession(String Host, IPPort Port)
+        => udp.Connect(Host, Port.ToUInt16());
+
+    public Byte[]? TryExchange(Byte[] Request, TimeSpan? Timeout = null)
+    {
+
+        udp.Client.ReceiveTimeout = (Int32) (Timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds;
+        udp.Send(Request);
+
+        var remote = new IPEndPoint(IPAddress.Any, 0);
+
+        try
+        {
+            return udp.Receive(ref remote);
+        }
+        catch (SocketException e) when (e.SocketErrorCode is SocketError.TimedOut
+                                                          or SocketError.ConnectionReset)
+        {
+            return null;
+        }
+
+    }
+
+    public void Dispose()
+        => udp.Dispose();
+
+}

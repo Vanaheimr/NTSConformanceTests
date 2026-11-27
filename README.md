@@ -251,9 +251,8 @@ change once IANA has assigned it.
 
 Against a draft, and so pinned to one: the suite's own codec (`RawNtpV5/`) is written from the
 text of -10, and a server is asked with the draft's Draft Identification field and nothing
-else. The basic mode only, without authentication, which is what Norn answers so far — on
-`NTPv5Support.Draft` and only where it answers plain NTP, since there is no NTS for NTPv5
-yet. No other implementation reachable from here speaks it: Debian packages none, and the
+else. Without authentication, which is what Norn answers so far — on `NTPv5Support.Draft`
+and only where it answers plain NTP, since there is no NTS for NTPv5 yet. No other implementation reachable from here speaks it: Debian packages none, and the
 IETF 127 interop table has ntpd-rs answering in NTPv4.
 
 | Draft | Focus | |
@@ -268,7 +267,11 @@ IETF 127 interop table has ntpd-rs answering in NTPv4.
 | §10 | Unknown flags ignored; an unsynchronized server answering only a client that set the Unsynchronized flag, and setting it | ✅ |
 | §6, §10 | Dropped: every mode but 3, a length not divisible by 4, an extension field shorter than its header or past the end | ✅ |
 | §12 | An NTPv4 request with "NTP5DRFT" in its reference timestamp gets it back from a server that speaks NTPv5, and from no other | ✅ |
-| §8, §7.4, §7.3, §11 | Interleaved mode, reference IDs, MAC, NTS for NTPv5 | — |
+| §8, §10 | Interleaved mode by server cookie: a zero or unknown cookie answered in the basic mode with a cookie of the server's own; a known one drawing the transmit timestamp of the previous response, after its software one and before the next request; Server Information naming the Interleaved flag exactly where the server interleaves | ✅ |
+| §7.4 | Reference IDs: 32 entries, the server's own non-zero 56-bit ID first at 100 %, unused ones at 255 and zero; fragments from their index at the request's length; an index that does not fit ignored and padded for; the lists of two weighted sources combined, halved, duplicates summed and sorted, shares rounded up | ✅ |
+| §7.7 | Correction: 28 octets, last, the request's Delay Correction and Path ID copied to the origin fields, the server's own and Reserved zero | ✅ |
+| §7.8, §7.9 | Reference Timestamp before the request and equal to the NTPv4 one; Monotonic Receive Timestamp keeping its epoch and advancing as the receive timestamps do | ✅ |
+| §7.5, §7.10, §7.3, §11 | Time Sources, Secondary Receive Timestamp, MAC, NTS for NTPv5 | — |
 
 ### The command line
 
@@ -327,11 +330,11 @@ Deliberately not covered, and why:
   encapsulation buys is hardware timestamping in NICs that timestamp only PTP, which nothing
   on a loopback can show. chrony 4.9 implements it, so the peer would be there if Norn ever
   grew the transport.
-- **NTPv5 beyond the basic mode** — `draft-ietf-ntp-ntpv5-10` (October 2026), Standards Track
+- **The rest of NTPv5** — `draft-ietf-ntp-ntpv5-10` (October 2026), Standards Track
   and still moving: -10 alone dropped leap-second announcements, redefined the clock status
   flag and the Time32 format, and replaced the reference-ID Bloom filter. What Norn answers of
-  it is tested [above](#ntpv5--draft-ietf-ntp-ntpv5-10), pinned to -10; the interleaved mode,
-  reference IDs, the MAC and NTS for NTPv5 wait for Norn to do them.
+  it is tested [above](#ntpv5--draft-ietf-ntp-ntpv5-10), pinned to -10; Time Sources, the
+  Secondary Receive Timestamp, the MAC and NTS for NTPv5 wait for Norn to do them.
 - **RFC 10049 Roughtime** — October 2026, Experimental. A different protocol with a different
   goal: rough time from servers you need not trust individually, on its own port (5319) with
   its own messages, and neither NTP packets nor NTS-KE anywhere in it. Its one point of
