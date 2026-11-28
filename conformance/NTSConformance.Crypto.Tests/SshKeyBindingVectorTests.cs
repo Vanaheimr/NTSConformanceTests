@@ -10,9 +10,9 @@ namespace NTSConformance.Crypto.Tests;
 
 /// <summary>
 /// Recomputes every test vector of Appendix A of the specification of the NTS-KE record
-/// "SSH Key Binding", version 1.0 of 2026-11-10
+/// "SSH Key Binding", version 1.1 of 2026-11-28
 /// (https://github.com/OpenChargingTechnology/Whitepapers/blob/master/NTS-over-SSH/nts-ke-ssh-key-binding.md,
-/// as of commit a2e0f23), with this suite's own key derivation of Section 5.
+/// with Appendix A.4 for NTPv5), with this suite's own key derivation of Section 5.
 ///
 /// Why this exists: the record is to be registered by IANA under Specification Required
 /// (RFC 8126 §4.6), which asks for a specification detailed enough for independent
@@ -289,6 +289,76 @@ public class SshKeyBindingVectorTests
         Assert.Multiple(() => {
             Assert.That(Bytes.ToHex(c2s), Is.EqualTo(c2sHex), $"C2S key, AEAD {aeadAlgorithm}, L = {length}");
             Assert.That(Bytes.ToHex(s2c), Is.EqualTo(s2cHex), $"S2C key, AEAD {aeadAlgorithm}, L = {length}");
+        });
+
+    }
+
+    #endregion
+
+    #region A.4 — another next protocol: NTPv5
+
+    /// <summary>
+    /// A.4: info for algorithm 15, C2S, under NTPv5's context — RFC 8915 §5.1 puts the Protocol
+    /// ID of the agreed next protocol in front, 0x8001 in the drafts of NTPv5.
+    /// </summary>
+    [Test]
+    public void A4_Info()
+    {
+
+        var info = RawSshKeyBinding.Info(15, RawSshKeyBinding.C2S, RawNtsKeNextProtocols.Ntpv5Draft);
+
+        Assert.That(Bytes.ToHex(info),
+                    Is.EqualTo("0000001e" + "4558504f525445522d6e6574776f726b2d74696d652d7365637572697479" +
+                               "00000005" + "8001000f00"),
+                    Bytes.Dump(info));
+
+    }
+
+
+    /// <summary>
+    /// A.4: the nts_ke_secret of A.2 under NTPv5's context.
+    /// </summary>
+    [TestCase(15, 32, "764c1248ad0bc5b9b166ca1503a3819851b32ead61f5d024ad27648ccec8ff2b",
+                      "d4194d2b81e7f47b505df60147ca271cdc8b709523accab3bb4c4be1674cea54", TestName = "A4_TransportedSecret_AesSivCmac256")]
+    [TestCase(30, 16, "f5268d5c1ce1eefd50db2c93735b9559",
+                      "f3493b68b3619827f91436f2cd253552",                                 TestName = "A4_TransportedSecret_Aes128GcmSiv")]
+    [TestCase(31, 32, "665de0df5b17c3cb5f06856ff803a0c9fde7557138d9ebd2e52dc6ac619a616e",
+                      "0d4f6f61b16ed755a29786b96cbb90a6ec51c3a95332e221a2f71800e67ade32", TestName = "A4_TransportedSecret_Aes256GcmSiv")]
+    public void A4_TransportedSecret(Int32 aeadAlgorithm, Int32 length, String c2sHex, String s2cHex)
+    {
+
+        var c2s = RawSshKeyBinding.TransportedSecretKey(A2Secret, (UInt16) aeadAlgorithm, RawSshKeyBinding.C2S, length, RawNtsKeNextProtocols.Ntpv5Draft);
+        var s2c = RawSshKeyBinding.TransportedSecretKey(A2Secret, (UInt16) aeadAlgorithm, RawSshKeyBinding.S2C, length, RawNtsKeNextProtocols.Ntpv5Draft);
+
+        Assert.Multiple(() => {
+            Assert.That(Bytes.ToHex(c2s), Is.EqualTo(c2sHex), $"C2S key, AEAD {aeadAlgorithm}, L = {length}, NTPv5");
+            Assert.That(Bytes.ToHex(s2c), Is.EqualTo(s2cHex), $"S2C key, AEAD {aeadAlgorithm}, L = {length}, NTPv5");
+        });
+
+    }
+
+
+    /// <summary>
+    /// A.4: the exporter_secret, nonce and PRK of A.3.2 under NTPv5's context.
+    /// </summary>
+    [TestCase(15, 32, "20ce9d781187cadb3131fb54e611d5720361c6568c465f9a7836070052a4fca6",
+                      "34168036ba9d89f00e76ae45fe452299133fbe22cdba3b7da27b0d30ee589335", TestName = "A4_SshExporter_AesSivCmac256")]
+    [TestCase(30, 16, "79b0a7e1b3652d742ee0815aa0ce4243",
+                      "a1a5dd3bcfa6967be84be3a642c2fc6f",                                 TestName = "A4_SshExporter_Aes128GcmSiv")]
+    [TestCase(31, 32, "e4a61c99232b67a6bf99f460332e24a6220b8ad37e4d149fc9bbf5c70007dc40",
+                      "ca73a3f8c6a8de86996751e60b75a8ec0fd5b969adaa9517957ca589e10e36ec", TestName = "A4_SshExporter_Aes256GcmSiv")]
+    public void A4_SshExporter(Int32 aeadAlgorithm, Int32 length, String c2sHex, String s2cHex)
+    {
+
+        var prk  = RawSshKeyBinding.ExporterPrk(HashAlgorithmName.SHA256, A32Nonce, A2Secret);
+        var info = (Byte direction) => RawSshKeyBinding.Info((UInt16) aeadAlgorithm, direction, RawNtsKeNextProtocols.Ntpv5Draft);
+
+        var c2s  = RawHkdf.Expand(HashAlgorithmName.SHA256, prk, info(RawSshKeyBinding.C2S), length);
+        var s2c  = RawHkdf.Expand(HashAlgorithmName.SHA256, prk, info(RawSshKeyBinding.S2C), length);
+
+        Assert.Multiple(() => {
+            Assert.That(Bytes.ToHex(c2s), Is.EqualTo(c2sHex), $"C2S key, AEAD {aeadAlgorithm}, L = {length}, NTPv5");
+            Assert.That(Bytes.ToHex(s2c), Is.EqualTo(s2cHex), $"S2C key, AEAD {aeadAlgorithm}, L = {length}, NTPv5");
         });
 
     }
