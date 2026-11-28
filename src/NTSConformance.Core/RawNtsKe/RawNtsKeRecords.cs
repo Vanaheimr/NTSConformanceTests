@@ -23,10 +23,18 @@ public static class RawNtsKeRecordTypes
 
     /// <summary>
     /// SSH Key Binding, the record of NTS-KE over SSH. Its value is still TBD with IANA:
-    /// 16386 (0x4002) is the provisional one from the Private or Experimental Use range that
-    /// Norn uses until the assignment, and this the one place to change when it comes.
+    /// 0x4E02 (19970) is the provisional one from the Private or Experimental Use range that
+    /// Norn uses until the assignment, and this the one place to change when it comes. It was
+    /// 0x4002 until 0x4000 to 0x4002 turned out to be the first values everybody else takes
+    /// from that range - draft-ietf-ntp-ntpv5-10 § 11 among them, with 0x4001.
     /// </summary>
-    public const UInt16 SshKeyBinding = 16386;
+    public const UInt16 SshKeyBinding = 0x4E02;
+
+    /// <summary>
+    /// draft-ietf-ntp-ntpv5-10 § 11: the non-critical record in which a client of the draft
+    /// names its draft, in ASCII. Gone in the RFC.
+    /// </summary>
+    public const UInt16 Ntpv5DraftIdentification = 0x4001;
 
 
     public static String Describe(UInt16 recordType)
@@ -42,6 +50,7 @@ public static class RawNtsKeRecordTypes
                Ntpv4PortNegotiation                  => "NTPv4 Port Negotiation",
                CompliantAes128GcmSivExporterContext  => "Compliant AES-128-GCM-SIV Exporter Context",
                SshKeyBinding                         => "SSH Key Binding",
+               Ntpv5DraftIdentification              => "NTPv5 Draft Identification",
                _                                    => $"unknown ({recordType})"
            };
 
@@ -78,6 +87,12 @@ public static class RawNtsKeErrorCodes
 public static class RawNtsKeNextProtocols
 {
     public const UInt16 Ntpv4 = 0;
+
+    /// <summary>
+    /// draft-ietf-ntp-ntpv5-10 § 11: NTPv5 in drafts, from the private range of the registry,
+    /// for IANA to replace.
+    /// </summary>
+    public const UInt16 Ntpv5Draft = 0x8001;
 }
 
 

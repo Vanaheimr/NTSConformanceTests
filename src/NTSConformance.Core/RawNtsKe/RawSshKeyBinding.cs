@@ -202,16 +202,18 @@ public static class RawSshKeyBinding
     #region Section 5.1 — common to all methods
 
     /// <summary>
-    /// The five octets of RFC 8915 §5.1: 0x0000 for NTPv4, the Numeric Identifier of the
-    /// negotiated AEAD algorithm, and 0x00 for the C2S key or 0x01 for the S2C key.
+    /// The five octets of RFC 8915 §5.1: the Protocol ID of the next protocol, 0x0000 for
+    /// NTPv4, the Numeric Identifier of the negotiated AEAD algorithm, and 0x00 for the C2S key
+    /// or 0x01 for the S2C key.
     /// </summary>
     public static Byte[] Context(UInt16  aeadAlgorithm,
-                                 Byte    direction)
+                                 Byte    direction,
+                                 UInt16  nextProtocol = 0x0000)
     {
 
         var context = new Byte[5];
 
-        BinaryPrimitives.WriteUInt16BigEndian(context.AsSpan(0), 0x0000);
+        BinaryPrimitives.WriteUInt16BigEndian(context.AsSpan(0), nextProtocol);
         BinaryPrimitives.WriteUInt16BigEndian(context.AsSpan(2), aeadAlgorithm);
         context[4] = direction;
 
@@ -225,10 +227,11 @@ public static class RawSshKeyBinding
     /// encodes a string (Section 5.1).
     /// </summary>
     public static Byte[] Info(UInt16  aeadAlgorithm,
-                              Byte    direction)
+                              Byte    direction,
+                              UInt16  nextProtocol = 0x0000)
 
         => [ .. SshString(Encoding.ASCII.GetBytes(ExporterLabel)),
-             .. SshString(Context(aeadAlgorithm, direction)) ];
+             .. SshString(Context(aeadAlgorithm, direction, nextProtocol)) ];
 
     #endregion
 
@@ -242,7 +245,8 @@ public static class RawSshKeyBinding
     public static Byte[] TransportedSecretKey(Byte[]  ntsKeSecret,
                                               UInt16  aeadAlgorithm,
                                               Byte    direction,
-                                              Int32   length)
+                                              Int32   length,
+                                              UInt16  nextProtocol = 0x0000)
     {
 
         if (ntsKeSecret.Length != TransportedSecretLength)
@@ -250,7 +254,7 @@ public static class RawSshKeyBinding
 
         return RawHkdf.Expand(HashAlgorithmName.SHA256,
                               ntsKeSecret,
-                              Info(aeadAlgorithm, direction),
+                              Info(aeadAlgorithm, direction, nextProtocol),
                               length);
 
     }

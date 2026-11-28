@@ -221,8 +221,9 @@ NTS-KE subsystem of Norn's SSH listener (`RawNtsKeOverSsh`), and `ClientNtsKeOve
 Norn's client from `ScriptedNtsKeOverSshServer`, Hermod's SSH server with a script in that
 subsystem. The server's cookies are spent to see which keys it sealed into them: an NTS request
 under the C2S key derived here must be answered under the S2C key derived here. The record type is
-still the provisional 16386 (`0x4002`); `RawNtsKeRecordTypes.SshKeyBinding` is the one place to
-change once IANA has assigned it.
+still a provisional one, 19970 (`0x4E02`, moved from `0x4002`, the first private values being the
+ones everybody takes); `RawNtsKeRecordTypes.SshKeyBinding` is the one place to change once IANA
+has assigned it.
 
 | Section | Focus | |
 |---|---|:--:|
@@ -251,9 +252,13 @@ change once IANA has assigned it.
 
 Against a draft, and so pinned to one: the suite's own codec (`RawNtpV5/`) is written from the
 text of -10, and a server is asked with the draft's Draft Identification field and nothing
-else. Without authentication, which is what Norn answers so far — on `NTPv5Support.Draft`
-and only where it answers plain NTP, since there is no NTS for NTPv5 yet. No other implementation reachable from here speaks it: Debian packages none, and the
-IETF 127 interop table has ntpd-rs answering in NTPv4.
+else. Norn answers it on `NTPv5Support.Draft`, plain and with NTS (§11). For NTS the keys
+are the suite's own: the key exchange runs over Norn's SSH listener with the Transported Secret,
+whose keys this side derives itself — with RFC 8915 §5.1's context beginning with `0x8001` — and
+the request and response go through the suite's codec and AEADs alone. No other implementation
+reachable from here speaks it: Debian packages none, and the IETF 127 interop table has ntpd-rs
+answering in NTPv4. What NTPv5 changes compared with NTPv4 is summed up in
+[`RawNtpV5/README.md`](src/NTSConformance.Core/RawNtpV5/README.md).
 
 | Draft | Focus | |
 |---|---|:--:|
@@ -271,7 +276,13 @@ IETF 127 interop table has ntpd-rs answering in NTPv4.
 | §7.4 | Reference IDs: 32 entries, the server's own non-zero 56-bit ID first at 100 %, unused ones at 255 and zero; fragments from their index at the request's length; an index that does not fit ignored and padded for; the lists of two weighted sources combined, halved, duplicates summed and sorted, shares rounded up | ✅ |
 | §7.7 | Correction: 28 octets, last, the request's Delay Correction and Path ID copied to the origin fields, the server's own and Reserved zero | ✅ |
 | §7.8, §7.9 | Reference Timestamp before the request and equal to the NTPv4 one; Monotonic Receive Timestamp keeping its epoch and advancing as the receive timestamps do | ✅ |
-| §7.5, §7.10, §7.3, §11 | Time Sources, Secondary Receive Timestamp, MAC, NTS for NTPv5 | — |
+| §11 | NTS-KE: NTPv5 (`0x8001`) agreed only for a client naming exactly this draft in record `0x4001`, NTPv4 otherwise and nothing for NTPv5 alone; the record not echoed, and no Bad Request for it with NTPv4 alone; an AEAD record required | ✅ |
+| §11, RFC 8915 §5.1 | The exporter context of NTPv5 beginning with `0x8001`, Norn's and the suite's; keys derived here under it authenticating both ways for algorithms 15, 30 and 31, and NTPv4's keys of the same exchange not | ✅ |
+| §11, RFC 8915 §5.7 | The response authenticated over everything before its authenticator, the Unique Identifier echoed, as long as the request; one cookie for the one spent and one per placeholder, none for a placeholder of another length; the new cookies good for the next request | ✅ |
+| §6, §7.3, §11 | A request whose NTS fails (authenticator, a short or missing Unique Identifier, two cookies or authenticators, an NTS field after the authenticator, a foreign cookie) dropped; answered with the Authentication NAK flag, stratum 0, no timestamps and no authenticator only where it set the flag | ✅ |
+| §11, RFC 8915 §6 | An NTPv4 cookie refused in NTPv5, an NTPv5 cookie answered with an NTS NAK in NTPv4 | ✅ |
+| §7.7, §11 | A Correction after the authenticator answered after the response's authenticator; any other field after it not answered; a server of NTS alone dropping plain NTPv5; `AuthenticatedOnly` interleaving NTS alone | ✅ |
+| §7.5, §7.10, §7.3 | Time Sources, Secondary Receive Timestamp, MAC | — |
 
 ### The command line
 
@@ -334,7 +345,7 @@ Deliberately not covered, and why:
   and still moving: -10 alone dropped leap-second announcements, redefined the clock status
   flag and the Time32 format, and replaced the reference-ID Bloom filter. What Norn answers of
   it is tested [above](#ntpv5--draft-ietf-ntp-ntpv5-10), pinned to -10; Time Sources, the
-  Secondary Receive Timestamp, the MAC and NTS for NTPv5 wait for Norn to do them.
+  Secondary Receive Timestamp and the MAC wait for Norn to do them.
 - **RFC 10049 Roughtime** — October 2026, Experimental. A different protocol with a different
   goal: rough time from servers you need not trust individually, on its own port (5319) with
   its own messages, and neither NTP packets nor NTS-KE anywhere in it. Its one point of
@@ -352,7 +363,7 @@ Deliberately not covered, and why:
 build/CommonTestSettings.props           shared MSBuild settings for every test project
 src/NTSConformance.Core/                 the harness
   RawNtp/                                independent RFC 5905 + 7822 codec, and AES-SIV
-  RawNtpV5/                              independent NTPv5 codec, from the text of draft -10
+  RawNtpV5/                              independent NTPv5 codec, from the text of draft -10, and NTS for it
   RawNtsKe/                              independent RFC 8915 §4 record codec, a raw client, a
                                          scripted server that keeps what the client sent, both
                                          also over SSH, and HKDF and the key derivation of

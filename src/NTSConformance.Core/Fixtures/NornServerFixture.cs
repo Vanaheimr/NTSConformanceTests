@@ -117,6 +117,10 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// Whether the server answers NTPv5, after the draft Norn implements. Off by default, as in
     /// the server itself.
     /// </param>
+    /// <param name="plainNtp">
+    /// Whether the server answers a request without NTS at all. On by default, as in the server
+    /// itself; off makes it a server of NTS alone.
+    /// </param>
     /// <remarks>
     /// That combination is the whole of RFC 8915 § 4.1.8's default: "If no record of this type
     /// is sent, the client SHALL assume a default of 123." It looked for a while as though
@@ -139,7 +143,8 @@ public sealed class NornServerFixture : IAsyncDisposable
                                                     IEnumerable<AEADAlgorithms>? aeadAlgorithms    = null,
                                                     ISshHostKey?     sshClientKey                  = null,
                                                     NTPAccessList?   accessList                    = null,
-                                                    NTPv5Support     ntpv5                         = NTPv5Support.Disabled)
+                                                    NTPv5Support     ntpv5                         = NTPv5Support.Disabled,
+                                                    Boolean          plainNtp                      = true)
 
         => FreePort.WithFreePorts(async (tcpPort, udpPort) => {
 
@@ -171,6 +176,7 @@ public sealed class NornServerFixture : IAsyncDisposable
                                 RateLimiter:                   rateLimiter,
                                 AccessList:                    accessList,
                                 NTPv5:                         ntpv5,
+                                PlainNTP:                      plainNtp,
                                 SupportedAEADAlgorithms:       aeadAlgorithms,
                                 SSHPort:                       sshPort,
                                 SSHAuthenticator:              sshClientKey is null
