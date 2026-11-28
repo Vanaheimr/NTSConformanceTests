@@ -106,14 +106,22 @@ public class NTPv5NtsTests
 
 
     /// <summary>
-    /// A key exchange over SSH with the Transported Secret, for the given protocol and
-    /// algorithm, and the keys under the context of <paramref name="ContextProtocol"/> - by
-    /// default the protocol agreed, which is what § 5.1 has them be.
+    /// A key exchange over SSH, for the given protocol and algorithm, with the given method of
+    /// the SSH Key Binding record alone on offer, and the keys under the context of
+    /// <paramref name="ContextProtocol"/> - by default the protocol agreed, which is what § 5.1
+    /// has them be.
     /// </summary>
+    /// <remarks>
+    /// The Transported Secret is HKDF-Expand-SHA256 of the secret the server sends, computed
+    /// here. The SSH Exporter is Hermod's exporter of this side's end of the connection, under
+    /// the context written here; its HKDF is checked against the specification's vectors on
+    /// its own, in SshKeyBindingVectorTests and Hermod's tests.
+    /// </remarks>
     private static async Task<Session> KeyExchange(NornServerFixture  Server,
                                                    UInt16             Aead             = 15,
                                                    UInt16             NextProtocol     = RawNtsKeNextProtocols.Ntpv5Draft,
-                                                   UInt16?            ContextProtocol  = null)
+                                                   UInt16?            ContextProtocol  = null,
+                                                   UInt16             Method           = RawSshKeyBinding.MethodTransportedSecret)
     {
 
         await using var ssh = await Server.ConnectSshAsync(ClientKey);
@@ -124,7 +132,7 @@ public class NTPv5NtsTests
                                      RawNtsKeRecord.NextProtocolNegotiation(NextProtocol),
                                      RawNtsKeRecord.AeadAlgorithmNegotiation(Aead),
                                      .. (NextProtocol == RawNtsKeNextProtocols.Ntpv5Draft ? new[] { DraftRecord() } : []),
-                                     RawNtsKeRecord.SshKeyBinding(RawSshKeyBinding.RequestBody(RawSshKeyBinding.MethodTransportedSecret)),
+                                     RawNtsKeRecord.SshKeyBinding(RawSshKeyBinding.RequestBody(Method)),
                                      RawNtsKeRecord.EndOfMessage()
                                  ]));
 
@@ -134,17 +142,27 @@ public class NTPv5NtsTests
         Assert.Multiple(() => {
             Assert.That(exchange.ErrorCode,                Is.Null,                          $"an Error record\n{exchange}");
             Assert.That(NextProtocolOf(exchange),          Is.EqualTo(new[] { NextProtocol }), $"the protocol agreed\n{exchange}");
-            Assert.That(keyBinding?.Body.Length,           Is.EqualTo(2 + RawSshKeyBinding.TransportedSecretLength), $"the Transported Secret\n{exchange}");
+            Assert.That(keyBinding?.Body.Length,           Is.EqualTo(2 + 32),               $"the method and its 32 octets of data\n{exchange}");
+            Assert.That(keyBinding is null ? null : (UInt16?) ((keyBinding.Body[0] << 8) | keyBinding.Body[1]),
+                        Is.EqualTo(Method),                                                  $"the method selected\n{exchange}");
             Assert.That(cookies,                           Is.Not.Empty,                     $"no cookie\n{exchange}");
         });
 
-        var secret     = keyBinding!.Body[2..];
+        var data       = keyBinding!.Body[2..];
         var keyLength  = RawNtpV5Nts.KeyLength(Aead);
         var context    = ContextProtocol ?? NextProtocol;
 
+        Byte[] KeyFor(Byte Direction)
+            => Method == RawSshKeyBinding.MethodTransportedSecret
+                   ? RawSshKeyBinding.TransportedSecretKey(data, Aead, Direction, keyLength, context)
+                   : ssh.Exporter.Export(data,
+                                         RawSshKeyBinding.ExporterLabel,
+                                         RawSshKeyBinding.Context(Aead, Direction, context),
+                                         keyLength);
+
         return new Session(Aead,
-                           RawSshKeyBinding.TransportedSecretKey(secret, Aead, RawSshKeyBinding.C2S, keyLength, context),
-                           RawSshKeyBinding.TransportedSecretKey(secret, Aead, RawSshKeyBinding.S2C, keyLength, context),
+                           KeyFor(RawSshKeyBinding.C2S),
+                           KeyFor(RawSshKeyBinding.S2C),
                            cookies);
 
     }
@@ -438,18 +456,22 @@ public class NTPv5NtsTests
 
 
     /// <summary>
-    /// The keys of a session of NTPv5 are those of its context: a request under the C2S key
-    /// derived here with 0x8001 is answered, and the answer opens under the S2C key derived the
-    /// same way.
+    /// The keys of a session of NTPv5 are those of its context, whichever method of the SSH Key
+    /// Binding record they come from (section 5.4 of its specification, 1.1): a request under
+    /// the C2S key derived here with 0x8001 is answered, and the answer opens under the S2C key
+    /// derived the same way.
     /// </summary>
-    [TestCase(15)]
-    [TestCase(30)]
-    [TestCase(31)]
-    public async Task TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId(Int32 Aead)
+    [TestCase(15, RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_TransportedSecret_AesSivCmac256")]
+    [TestCase(30, RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_TransportedSecret_Aes128GcmSiv")]
+    [TestCase(31, RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_TransportedSecret_Aes256GcmSiv")]
+    [TestCase(15, RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_SshExporter_AesSivCmac256")]
+    [TestCase(30, RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_SshExporter_Aes128GcmSiv")]
+    [TestCase(31, RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_SshExporter_Aes256GcmSiv")]
+    public async Task TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId(Int32 Aead, UInt16 Method)
     {
 
-        var session  = await KeyExchange(Server, (UInt16) Aead);
-        var verified = Verified(session, Send(Server, session), $"AEAD {Aead}");
+        var session  = await KeyExchange(Server, (UInt16) Aead, Method: Method);
+        var verified = Verified(session, Send(Server, session), $"AEAD {Aead}, method 0x{Method:x4}");
 
         Assert.That(verified.Cookies, Is.Not.Empty, "a new cookie for the one spent");
 
@@ -460,14 +482,34 @@ public class NTPv5NtsTests
     /// The control: the keys of the same key exchange under NTPv4's context, 0x0000, are not
     /// taken. Without it, a server that took any key would pass the test above as well.
     /// </summary>
-    [Test]
-    public async Task TheKeysOfNTPv4_DoNotAuthenticateAnNTPv5Session()
+    [TestCase(RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfNTPv4_DoNotAuthenticateAnNTPv5Session_TransportedSecret")]
+    [TestCase(RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfNTPv4_DoNotAuthenticateAnNTPv5Session_SshExporter")]
+    public async Task TheKeysOfNTPv4_DoNotAuthenticateAnNTPv5Session(UInt16 Method)
     {
 
-        var session = await KeyExchange(Server, ContextProtocol: RawNtsKeNextProtocols.Ntpv4);
+        var session = await KeyExchange(Server, ContextProtocol: RawNtsKeNextProtocols.Ntpv4, Method: Method);
 
         Assert.That(Send(Server, session, Timeout: Silence).Response, Is.Null,
-                    "a request under keys of NTPv4's context was answered");
+                    $"method 0x{Method:x4}: a request under keys of NTPv4's context was answered");
+
+    }
+
+
+    /// <summary>
+    /// And the cookies of either method are good for NTPv5 alone: the NTPv4 request of the same
+    /// session draws an NTS NAK (RFC 8915 § 5.7), as a cookie of the Transported Secret does.
+    /// </summary>
+    [Test]
+    public async Task ACookieOfTheSshExporter_ForNTPv5_IsAnNtsNakInNTPv4()
+    {
+
+        var session = await KeyExchange(Server, Method: RawSshKeyBinding.MethodSshExporter);
+        var reply   = RawNtpExchange.TryExchange(RawNtsExtensionFields.BuildNtsRequest(session.C2SKey, session.Cookies[0]),
+                                                 "127.0.0.1",
+                                                 Server.NTPPort);
+
+        Assert.That(reply,           Is.Not.Null,         "no answer at all");
+        Assert.That(reply!.KissCode, Is.EqualTo("NTSN"), reply.ToString());
 
     }
 
