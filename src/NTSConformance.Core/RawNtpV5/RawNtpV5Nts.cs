@@ -12,8 +12,9 @@ namespace NTSConformance.Core.RawNtpV5;
 /// order and what the authenticator covers are RFC 8915's.
 /// </summary>
 /// <remarks>
-/// The keys are not NTPv4's, though: RFC 8915 § 5.1 puts the Protocol ID of the next protocol
-/// into the exporter context, and the key exchange agreed to NTPv5's 0x8001.
+/// So are the keys: RFC 8915 § 5.1 is key extraction "for NTPv4", the draft specifies none of
+/// its own, and chrony-ntp5 derives the keys of NTPv5 under NTPv4's exporter context, 0x0000 -
+/// as Norn does since 92b48f4. The cookie, not the key, names the protocol it is good for.
 /// </remarks>
 public static class RawNtpV5Nts
 {

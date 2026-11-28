@@ -256,7 +256,7 @@ Against a draft, and so pinned to one: the suite's own codec (`RawNtpV5/`) is wr
 text of -10, and a server is asked with the draft's Draft Identification field and nothing
 else. Norn answers it on `NTPv5Support.Draft`, plain and with NTS (§11). For NTS the keys
 are the suite's own: the key exchange runs over Norn's SSH listener with the Transported Secret,
-whose keys this side derives itself — with RFC 8915 §5.1's context beginning with `0x8001` — and
+whose keys this side derives itself — under RFC 8915 §5.1's context of NTPv4, `0x0000`, as chrony-ntp5 has them — and
 the request and response go through the suite's codec and AEADs alone.
 
 Two other implementations speak it, both by the draft's author and listed in its §14:
@@ -297,10 +297,10 @@ NTPv5" without it, so Norn's server agrees to NTPv4 with it, and does so authent
 | §7.7 | Correction: 28 octets, last, the request's Delay Correction and Path ID copied to the origin fields, the server's own and Reserved zero | ✅ |
 | §7.8, §7.9 | Reference Timestamp before the request and equal to the NTPv4 one; Monotonic Receive Timestamp keeping its epoch and advancing as the receive timestamps do | ✅ |
 | §11 | NTS-KE: NTPv5 (`0x8001`) agreed only for a client naming exactly this draft in record `0x4001`, NTPv4 otherwise and nothing for NTPv5 alone; the record not echoed, and no Bad Request for it with NTPv4 alone; an AEAD record required | ✅ |
-| §11, RFC 8915 §5.1 | The exporter context of NTPv5 beginning with `0x8001`, Norn's and the suite's; keys derived here under it authenticating both ways for algorithms 15, 30 and 31, from the Transported Secret and from the SSH Exporter, and NTPv4's keys of the same exchange not | ✅ |
+| §11, RFC 8915 §5.1 | The exporter context of NTPv5 that of NTPv4, `0x0000`, Norn's and the suite's; keys derived here under it authenticating both ways for algorithms 15, 30 and 31, from the Transported Secret and from the SSH Exporter, and the keys of `0x8001` (SSH Key Binding 1.1) of the same exchange not | ✅ |
 | §11, RFC 8915 §5.7 | The response authenticated over everything before its authenticator, the Unique Identifier echoed, as long as the request; one cookie for the one spent and one per placeholder, none for a placeholder of another length; the new cookies good for the next request | ✅ |
 | §6, §7.3, §11 | A request whose NTS fails (authenticator, a short or missing Unique Identifier, two cookies or authenticators, an NTS field after the authenticator, a foreign cookie) dropped; answered with the Authentication NAK flag, stratum 0, no timestamps and no authenticator only where it set the flag | ✅ |
-| §11, RFC 8915 §6 | An NTPv4 cookie refused in NTPv5, an NTPv5 cookie answered with an NTS NAK in NTPv4 | ✅ |
+| §11, RFC 8915 §6 | An NTPv4 cookie refused in NTPv5, an NTPv5 cookie answered with an NTS NAK in NTPv4 — under the same keys, so by the cookie alone | ✅ |
 | §7.7, §11 | A Correction after the authenticator answered after the response's authenticator; any other field after it not answered; a server of NTS alone dropping plain NTPv5; `AuthenticatedOnly` interleaving NTS alone | ✅ |
 | §7.5 | Time Sources: every source with its share encoded as in §7.4, its Authenticated flag, and the identifier of its kind at that kind's length (none, IPv4, IPv6, reference ID); fragments from their index, no longer than the request and skipping no source to fit a shorter one; an index that is no source answered with an empty field; not answered where not enabled, and padded for; a request shorter than 20 octets of data or not divisible by 4 not answered with it | ✅ |
 | §7.10 | Secondary Receive Timestamp: 16 octets, in UTC the header's own era and receive timestamp, in TAI exactly 37 s later, zero for a timescale supported without a value, an unsupported timescale ignored and padded for, every supported one of several requested answered once | ✅ |

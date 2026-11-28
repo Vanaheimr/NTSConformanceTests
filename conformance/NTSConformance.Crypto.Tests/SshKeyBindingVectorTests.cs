@@ -10,7 +10,7 @@ namespace NTSConformance.Crypto.Tests;
 
 /// <summary>
 /// Recomputes every test vector of Appendix A of the specification of the NTS-KE record
-/// "SSH Key Binding", version 1.1 of 2026-11-28
+/// "SSH Key Binding", version 1.2 of 2026-11-28
 /// (https://github.com/OpenChargingTechnology/Whitepapers/blob/master/NTS-over-SSH/nts-ke-ssh-key-binding.md,
 /// with Appendix A.4 for NTPv5), with this suite's own key derivation of Section 5.
 ///
@@ -298,37 +298,38 @@ public class SshKeyBindingVectorTests
     #region A.4 — another next protocol: NTPv5
 
     /// <summary>
-    /// A.4: info for algorithm 15, C2S, under NTPv5's context — RFC 8915 §5.1 puts the Protocol
-    /// ID of the agreed next protocol in front, 0x8001 in the drafts of NTPv5.
+    /// A.4: an exchange that agrees to NTPv5 has the info of A.1 - the context begins with
+    /// 0x0000, NTPv4's, for every next protocol (Section 5.4 of version 1.2).
     /// </summary>
     [Test]
-    public void A4_Info()
+    public void A4_Info_IsThatOfA1()
     {
 
-        var info = RawSshKeyBinding.Info(15, RawSshKeyBinding.C2S, RawNtsKeNextProtocols.Ntpv5Draft);
+        var info = RawSshKeyBinding.Info(15, RawSshKeyBinding.C2S, RawSshKeyBinding.ContextProtocolOf(RawNtsKeNextProtocols.Ntpv5Draft));
 
         Assert.That(Bytes.ToHex(info),
                     Is.EqualTo("0000001e" + "4558504f525445522d6e6574776f726b2d74696d652d7365637572697479" +
-                               "00000005" + "8001000f00"),
+                               "00000005" + "0000000f00"),
                     Bytes.Dump(info));
 
     }
 
 
     /// <summary>
-    /// A.4: the nts_ke_secret of A.2 under NTPv5's context.
+    /// A.4: the nts_ke_secret of A.2 for NTPv5 gives the keys of A.2.
     /// </summary>
-    [TestCase(15, 32, "764c1248ad0bc5b9b166ca1503a3819851b32ead61f5d024ad27648ccec8ff2b",
-                      "d4194d2b81e7f47b505df60147ca271cdc8b709523accab3bb4c4be1674cea54", TestName = "A4_TransportedSecret_AesSivCmac256")]
-    [TestCase(30, 16, "f5268d5c1ce1eefd50db2c93735b9559",
-                      "f3493b68b3619827f91436f2cd253552",                                 TestName = "A4_TransportedSecret_Aes128GcmSiv")]
-    [TestCase(31, 32, "665de0df5b17c3cb5f06856ff803a0c9fde7557138d9ebd2e52dc6ac619a616e",
-                      "0d4f6f61b16ed755a29786b96cbb90a6ec51c3a95332e221a2f71800e67ade32", TestName = "A4_TransportedSecret_Aes256GcmSiv")]
-    public void A4_TransportedSecret(Int32 aeadAlgorithm, Int32 length, String c2sHex, String s2cHex)
+    [TestCase(15, 32, "8a9424e3fd81e14cbc9731adff3ae5b6d2fe66349b4ad384f59a1f5bd7d552ec",
+                      "2abf8475eda5bb1798b5d3d0f2fc413d62461c0bce93707fed97366193422713", TestName = "A4_TransportedSecret_IsThatOfA2_AesSivCmac256")]
+    [TestCase(30, 16, "e7961cb8c44fcc3d44d091c8574ad0f2",
+                      "964988be02f188bbc3c96bd86bba825d",                                 TestName = "A4_TransportedSecret_IsThatOfA2_Aes128GcmSiv")]
+    [TestCase(31, 32, "5f32ede85ca7a7607baa1c2bf14057c9afb7458114e476f6a187f2f96da0aa2e",
+                      "0b6576d8ee6e31e992f4821dac89ec44d1e575a0f1b69a4f64225dc6051ec128", TestName = "A4_TransportedSecret_IsThatOfA2_Aes256GcmSiv")]
+    public void A4_TransportedSecret_IsThatOfA2(Int32 aeadAlgorithm, Int32 length, String c2sHex, String s2cHex)
     {
 
-        var c2s = RawSshKeyBinding.TransportedSecretKey(A2Secret, (UInt16) aeadAlgorithm, RawSshKeyBinding.C2S, length, RawNtsKeNextProtocols.Ntpv5Draft);
-        var s2c = RawSshKeyBinding.TransportedSecretKey(A2Secret, (UInt16) aeadAlgorithm, RawSshKeyBinding.S2C, length, RawNtsKeNextProtocols.Ntpv5Draft);
+        var context = RawSshKeyBinding.ContextProtocolOf(RawNtsKeNextProtocols.Ntpv5Draft);
+        var c2s     = RawSshKeyBinding.TransportedSecretKey(A2Secret, (UInt16) aeadAlgorithm, RawSshKeyBinding.C2S, length, context);
+        var s2c     = RawSshKeyBinding.TransportedSecretKey(A2Secret, (UInt16) aeadAlgorithm, RawSshKeyBinding.S2C, length, context);
 
         Assert.Multiple(() => {
             Assert.That(Bytes.ToHex(c2s), Is.EqualTo(c2sHex), $"C2S key, AEAD {aeadAlgorithm}, L = {length}, NTPv5");
@@ -339,19 +340,19 @@ public class SshKeyBindingVectorTests
 
 
     /// <summary>
-    /// A.4: the exporter_secret, nonce and PRK of A.3.2 under NTPv5's context.
+    /// A.4: the exporter_secret, nonce and PRK of A.3.2 for NTPv5 give the keys of A.3.2.
     /// </summary>
-    [TestCase(15, 32, "20ce9d781187cadb3131fb54e611d5720361c6568c465f9a7836070052a4fca6",
-                      "34168036ba9d89f00e76ae45fe452299133fbe22cdba3b7da27b0d30ee589335", TestName = "A4_SshExporter_AesSivCmac256")]
-    [TestCase(30, 16, "79b0a7e1b3652d742ee0815aa0ce4243",
-                      "a1a5dd3bcfa6967be84be3a642c2fc6f",                                 TestName = "A4_SshExporter_Aes128GcmSiv")]
-    [TestCase(31, 32, "e4a61c99232b67a6bf99f460332e24a6220b8ad37e4d149fc9bbf5c70007dc40",
-                      "ca73a3f8c6a8de86996751e60b75a8ec0fd5b969adaa9517957ca589e10e36ec", TestName = "A4_SshExporter_Aes256GcmSiv")]
-    public void A4_SshExporter(Int32 aeadAlgorithm, Int32 length, String c2sHex, String s2cHex)
+    [TestCase(15, 32, "dcf81015c16cb4b955624949e824e89f45cac437995a873e938ec3c7adc0218b",
+                      "6b91d1a3ad1eb448fa5010e20dd79b280f7c303aec2252b464a4642fb70ea12d", TestName = "A4_SshExporter_IsThatOfA32_AesSivCmac256")]
+    [TestCase(30, 16, "fd8733d215d9d3a79f0d95b86884ed28",
+                      "f7fe123370cdd2ed478906c34bd6d7b8",                                 TestName = "A4_SshExporter_IsThatOfA32_Aes128GcmSiv")]
+    [TestCase(31, 32, "05d23579f0905080af0243173053808adad6d276ed0560a9fe64ef714b690554",
+                      "d72234762b25d744d00016818b8f23ad65d1ac5c85009d1ada6215046c73ebcc", TestName = "A4_SshExporter_IsThatOfA32_Aes256GcmSiv")]
+    public void A4_SshExporter_IsThatOfA32(Int32 aeadAlgorithm, Int32 length, String c2sHex, String s2cHex)
     {
 
         var prk  = RawSshKeyBinding.ExporterPrk(HashAlgorithmName.SHA256, A32Nonce, A2Secret);
-        var info = (Byte direction) => RawSshKeyBinding.Info((UInt16) aeadAlgorithm, direction, RawNtsKeNextProtocols.Ntpv5Draft);
+        var info = (Byte direction) => RawSshKeyBinding.Info((UInt16) aeadAlgorithm, direction, RawSshKeyBinding.ContextProtocolOf(RawNtsKeNextProtocols.Ntpv5Draft));
 
         var c2s  = RawHkdf.Expand(HashAlgorithmName.SHA256, prk, info(RawSshKeyBinding.C2S), length);
         var s2c  = RawHkdf.Expand(HashAlgorithmName.SHA256, prk, info(RawSshKeyBinding.S2C), length);
@@ -360,6 +361,21 @@ public class SshKeyBindingVectorTests
             Assert.That(Bytes.ToHex(c2s), Is.EqualTo(c2sHex), $"C2S key, AEAD {aeadAlgorithm}, L = {length}, NTPv5");
             Assert.That(Bytes.ToHex(s2c), Is.EqualTo(s2cHex), $"S2C key, AEAD {aeadAlgorithm}, L = {length}, NTPv5");
         });
+
+    }
+
+
+    /// <summary>
+    /// A.4: the C2S key of version 1.1, whose context began with 0x8001 - the key an
+    /// implementation that still does derives, and that does not interoperate.
+    /// </summary>
+    [Test]
+    public void A4_TheKeyOfVersion11_Is764c()
+    {
+
+        var c2s = RawSshKeyBinding.TransportedSecretKey(A2Secret, 15, RawSshKeyBinding.C2S, 32, RawNtsKeNextProtocols.Ntpv5Draft);
+
+        Assert.That(Bytes.ToHex(c2s), Is.EqualTo("764c1248ad0bc5b9b166ca1503a3819851b32ead61f5d024ad27648ccec8ff2b"));
 
     }
 

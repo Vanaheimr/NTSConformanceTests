@@ -17,9 +17,9 @@ namespace NTSConformance.Server.Tests;
 
 /// <summary>
 /// NTS for NTPv5, draft-ietf-ntp-ntpv5-10 § 11: the key exchange agreeing to NTPv5 under the
-/// draft's Protocol ID 0x8001 for a client that names its draft in record 0x4001, keys from the
-/// exporter context of that protocol (RFC 8915 § 5.1), and the extension fields of RFC 8915 § 5
-/// in an NTPv5 message.
+/// draft's Protocol ID 0x8001 for a client that names its draft in record 0x4001, the keys of
+/// NTPv4's exporter context (RFC 8915 § 5.1, as chrony-ntp5 derives them), and the extension
+/// fields of RFC 8915 § 5 in an NTPv5 message.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,8 +28,10 @@ namespace NTSConformance.Server.Tests;
 /// they would come from the TLS exporter, which .NET's TLS does not expose, so the key exchange
 /// runs over Norn's SSH listener with the Transported Secret of NTS-KE over SSH: the server
 /// hands over nts_ke_secret, and the keys are HKDF-Expand-SHA256 of it with RFC 8915 § 5.1's
-/// context - and so the context with 0x8001 in front is a fact this side computes, not one it
-/// is told. The key exchange over TLS is checked for what it agrees to.
+/// context - and so which context the keys of NTPv5 come from is a fact this side computes, not
+/// one it is told. It is NTPv4's, 0x0000: § 5.1 is key extraction "for NTPv4", the draft
+/// specifies none of its own, and chrony-ntp5, by one of the draft's authors, derives them so
+/// (section 5.4 of the SSH Key Binding specification, 1.2). The key exchange over TLS is checked for what it agrees to.
 /// </para>
 /// <para>
 /// Where the draft leaves a choice, what Norn chose is checked as Norn's: the Draft
@@ -108,8 +110,7 @@ public class NTPv5NtsTests
     /// <summary>
     /// A key exchange over SSH, for the given protocol and algorithm, with the given method of
     /// the SSH Key Binding record alone on offer, and the keys under the context of
-    /// <paramref name="ContextProtocol"/> - by default the protocol agreed, which is what § 5.1
-    /// has them be.
+    /// <paramref name="ContextProtocol"/> - by default 0x0000, NTPv4's, whatever was agreed.
     /// </summary>
     /// <remarks>
     /// The Transported Secret is HKDF-Expand-SHA256 of the secret the server sends, computed
@@ -150,7 +151,7 @@ public class NTPv5NtsTests
 
         var data       = keyBinding!.Body[2..];
         var keyLength  = RawNtpV5Nts.KeyLength(Aead);
-        var context    = ContextProtocol ?? NextProtocol;
+        var context    = ContextProtocol ?? RawSshKeyBinding.ContextProtocolOf(NextProtocol);
 
         Byte[] KeyFor(Byte Direction)
             => Method == RawSshKeyBinding.MethodTransportedSecret
@@ -430,25 +431,25 @@ public class NTPv5NtsTests
     #region The keys (RFC 8915 § 5.1)
 
     /// <summary>
-    /// RFC 8915 § 5.1: the context is "the Protocol ID of the next protocol", then the algorithm,
-    /// then the direction - so NTPv5's begins with 0x8001. Written out as literals, against
-    /// Norn's context and this suite's.
+    /// RFC 8915 § 5.1: the context is the Protocol ID - "SHALL be zero (the Protocol ID for
+    /// NTPv4)" - then the algorithm, then the direction; and NTPv5 keeps NTPv4's, as chrony-ntp5
+    /// does. Written out as literals, against Norn's context and this suite's.
     /// </summary>
-    [TestCase(AEADAlgorithms.AES_SIV_CMAC_256, false, new Byte[] { 0x80, 0x01, 0x00, 0x0F, 0x00 })]
-    [TestCase(AEADAlgorithms.AES_SIV_CMAC_256, true,  new Byte[] { 0x80, 0x01, 0x00, 0x0F, 0x01 })]
-    [TestCase(AEADAlgorithms.AES_128_GCM_SIV,  false, new Byte[] { 0x80, 0x01, 0x00, 0x1E, 0x00 })]
-    [TestCase(AEADAlgorithms.AES_256_GCM_SIV,  true,  new Byte[] { 0x80, 0x01, 0x00, 0x1F, 0x01 })]
-    public void TheContextOfNTPv5_BeginsWithItsProtocolId(AEADAlgorithms Algorithm, Boolean ServerToClient, Byte[] Expected)
+    [TestCase(AEADAlgorithms.AES_SIV_CMAC_256, false, new Byte[] { 0x00, 0x00, 0x00, 0x0F, 0x00 })]
+    [TestCase(AEADAlgorithms.AES_SIV_CMAC_256, true,  new Byte[] { 0x00, 0x00, 0x00, 0x0F, 0x01 })]
+    [TestCase(AEADAlgorithms.AES_128_GCM_SIV,  false, new Byte[] { 0x00, 0x00, 0x00, 0x1E, 0x00 })]
+    [TestCase(AEADAlgorithms.AES_256_GCM_SIV,  true,  new Byte[] { 0x00, 0x00, 0x00, 0x1F, 0x01 })]
+    public void TheContextOfNTPv5_IsThatOfNTPv4(AEADAlgorithms Algorithm, Boolean ServerToClient, Byte[] Expected)
 
         => Assert.Multiple(() => {
 
-               Assert.That(NTSKE_ExportedKeys.Context(Algorithm, ServerToClient, RawNtsKeNextProtocols.Ntpv5Draft),
+               Assert.That(NTSKE_ExportedKeys.Context(Algorithm, ServerToClient, NTSKE_ExportedKeys.ExporterProtocolFor(RawNtsKeNextProtocols.Ntpv5Draft)),
                            Is.EqualTo(Expected).AsCollection,
                            "Norn's");
 
                Assert.That(RawSshKeyBinding.Context((UInt16) Algorithm,
                                                     ServerToClient ? RawSshKeyBinding.S2C : RawSshKeyBinding.C2S,
-                                                    RawNtsKeNextProtocols.Ntpv5Draft),
+                                                    RawSshKeyBinding.ContextProtocolOf(RawNtsKeNextProtocols.Ntpv5Draft)),
                            Is.EqualTo(Expected).AsCollection,
                            "the suite's");
 
@@ -456,18 +457,18 @@ public class NTPv5NtsTests
 
 
     /// <summary>
-    /// The keys of a session of NTPv5 are those of its context, whichever method of the SSH Key
-    /// Binding record they come from (section 5.4 of its specification, 1.1): a request under
-    /// the C2S key derived here with 0x8001 is answered, and the answer opens under the S2C key
+    /// The keys of a session of NTPv5 are those of NTPv4's context, whichever method of the SSH
+    /// Key Binding record they come from (section 5.4 of its specification, 1.2): a request under
+    /// the C2S key derived here with 0x0000 is answered, and the answer opens under the S2C key
     /// derived the same way.
     /// </summary>
-    [TestCase(15, RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_TransportedSecret_AesSivCmac256")]
-    [TestCase(30, RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_TransportedSecret_Aes128GcmSiv")]
-    [TestCase(31, RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_TransportedSecret_Aes256GcmSiv")]
-    [TestCase(15, RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_SshExporter_AesSivCmac256")]
-    [TestCase(30, RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_SshExporter_Aes128GcmSiv")]
-    [TestCase(31, RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId_SshExporter_Aes256GcmSiv")]
-    public async Task TheKeysOfAnNTPv5Session_AreThoseOfItsProtocolId(Int32 Aead, UInt16 Method)
+    [TestCase(15, RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfAnNTPv5Session_AreThoseOfNTPv4sContext_TransportedSecret_AesSivCmac256")]
+    [TestCase(30, RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfAnNTPv5Session_AreThoseOfNTPv4sContext_TransportedSecret_Aes128GcmSiv")]
+    [TestCase(31, RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfAnNTPv5Session_AreThoseOfNTPv4sContext_TransportedSecret_Aes256GcmSiv")]
+    [TestCase(15, RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfAnNTPv5Session_AreThoseOfNTPv4sContext_SshExporter_AesSivCmac256")]
+    [TestCase(30, RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfAnNTPv5Session_AreThoseOfNTPv4sContext_SshExporter_Aes128GcmSiv")]
+    [TestCase(31, RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfAnNTPv5Session_AreThoseOfNTPv4sContext_SshExporter_Aes256GcmSiv")]
+    public async Task TheKeysOfAnNTPv5Session_AreThoseOfNTPv4sContext(Int32 Aead, UInt16 Method)
     {
 
         var session  = await KeyExchange(Server, (UInt16) Aead, Method: Method);
@@ -479,18 +480,19 @@ public class NTPv5NtsTests
 
 
     /// <summary>
-    /// The control: the keys of the same key exchange under NTPv4's context, 0x0000, are not
-    /// taken. Without it, a server that took any key would pass the test above as well.
+    /// The control: the keys of the same key exchange under the context of version 1.1, with
+    /// NTPv5's 0x8001 in front, are not taken. Without it, a server that took any key would
+    /// pass the test above as well.
     /// </summary>
-    [TestCase(RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysOfNTPv4_DoNotAuthenticateAnNTPv5Session_TransportedSecret")]
-    [TestCase(RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysOfNTPv4_DoNotAuthenticateAnNTPv5Session_SshExporter")]
-    public async Task TheKeysOfNTPv4_DoNotAuthenticateAnNTPv5Session(UInt16 Method)
+    [TestCase(RawSshKeyBinding.MethodTransportedSecret, TestName = "TheKeysUnder0x8001_DoNotAuthenticateAnNTPv5Session_TransportedSecret")]
+    [TestCase(RawSshKeyBinding.MethodSshExporter,       TestName = "TheKeysUnder0x8001_DoNotAuthenticateAnNTPv5Session_SshExporter")]
+    public async Task TheKeysUnder0x8001_DoNotAuthenticateAnNTPv5Session(UInt16 Method)
     {
 
-        var session = await KeyExchange(Server, ContextProtocol: RawNtsKeNextProtocols.Ntpv4, Method: Method);
+        var session = await KeyExchange(Server, ContextProtocol: RawNtsKeNextProtocols.Ntpv5Draft, Method: Method);
 
         Assert.That(Send(Server, session, Timeout: Silence).Response, Is.Null,
-                    $"method 0x{Method:x4}: a request under keys of NTPv4's context was answered");
+                    $"method 0x{Method:x4}: a request under keys of the context 0x8001 was answered");
 
     }
 
@@ -758,9 +760,9 @@ public class NTPv5NtsTests
 
 
     /// <summary>
-    /// The cookie of an NTPv4 key exchange in an NTPv5 request: its keys come from NTPv4's
-    /// exporter context and are no keys of NTPv5, so the request fails - silently, or with the
-    /// NAK where it asked for one.
+    /// The cookie of an NTPv4 key exchange in an NTPv5 request. Its keys are those NTPv5 would
+    /// have too, so what refuses it is the cookie alone, which names the protocol it was issued
+    /// for: the request fails - silently, or with the NAK where it asked for one.
     /// </summary>
     [Test]
     public async Task AnNTPv4Cookie_InAnNTPv5Request_IsNotTaken()
@@ -782,8 +784,8 @@ public class NTPv5NtsTests
 
     /// <summary>
     /// And the other way round: the cookie of an NTPv5 key exchange in an NTPv4 request, under
-    /// NTPv5's keys, which NTPv4 does not have. RFC 8915 § 5.7 has the server answer a cookie it
-    /// cannot use with an NTS NAK, kiss code NTSN.
+    /// the same keys - the cookie alone is NTPv5's. RFC 8915 § 5.7 has the server answer a cookie
+    /// it cannot use with an NTS NAK, kiss code NTSN.
     /// </summary>
     [Test]
     public async Task AnNTPv5Cookie_InAnNTPv4Request_IsAnNtsNak()
