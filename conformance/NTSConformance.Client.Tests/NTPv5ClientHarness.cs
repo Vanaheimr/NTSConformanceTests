@@ -77,7 +77,8 @@ internal sealed class NTPv5ClientHarness : IAsyncDisposable
 
     public NTPv5ClientHarness(Int32            CookieCount         = 8,
                               DateTimeOffset?  Now                 = null,
-                              UInt64?          OwnReferenceId      = null)
+                              UInt64?          OwnReferenceId      = null,
+                              NTPv5InterleavedAssociation? Interleaved = null)
     {
 
         Server       = new ScriptedNtpV5Server(request => Script(request));
@@ -107,7 +108,8 @@ internal sealed class NTPv5ClientHarness : IAsyncDisposable
                                      IPVersionPreference:  IPVersionPreference.IPv4Only,
                                      Timeout:              TimeSpan.FromSeconds(2),
                                      TimeProvider:         Clock) {
-                           NTPv5OwnReferenceId = OwnReferenceId
+                           NTPv5OwnReferenceId = OwnReferenceId,
+                           NTPv5Interleaved    = Interleaved
                        };
 
     }
