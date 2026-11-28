@@ -282,6 +282,63 @@ public class InterleavedClientTests
 
 
     /// <summary>
+    /// The interleaved measurement across eras, with the client's clock far from the server's:
+    /// one reset to the Unix epoch hearing from a server in 2040, and one in 2060 hearing from
+    /// a server in 2100.
+    ///
+    /// RFC 5905 § 6 has differences of timestamps computed so that they come out right within
+    /// 68 years, which is the subtraction of the 64-bit values wrapping. Seventy years is more,
+    /// and a client whose clock booted at 1970 is exactly that far from a server after 2038:
+    /// wrapping, it measures the server 66 years behind and would set itself to 1904. The same
+    /// rule as for the basic mode (TimestampTests.Norn_ResolvesTheEra_EvenWithItsClockResetTo1970)
+    /// applies here: each timestamp in its era, against the client's own clock at T4 and no
+    /// earlier than the day the code was written.
+    /// </summary>
+    [TestCase(1970, 2040, "a client reset to 1970, a server in 2040")]
+    [TestCase(2060, 2100, "a client in 2060, a server in 2100")]
+    public void AnInterleavedMeasurement_AcrossEras_IsTheServersTimeMinusTheClients(Int32 ClientYear, Int32 ServerYear, String Why)
+    {
+
+        var clientT1 = new DateTime(ClientYear, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var serverT2 = new DateTime(ServerYear, 1, 1, 0, 0, 2, DateTimeKind.Utc);
+        var serverT3 = serverT2.AddSeconds(1);
+        var clientT4 = clientT1.AddSeconds(3);
+
+        static UInt64 Wire(DateTime Instant)
+            => Core.RawNtp.RawNtpTimestamp.FromDateTime(Instant, Core.RawNtp.RawNtpTimestamp.EraFor(Instant));
+
+        var association = new InterleavedAssociation();
+
+        association.RecordValidResponse(
+            new NTPPacket(ReceiveTimestamp: Wire(serverT2), TransmitTimestamp: Wire(serverT3) - 1),
+            RequestTransmit:      Wire(clientT1),
+            OwnReceiveTimestamp:  Wire(clientT4)
+        );
+
+        // The next response, received by the client a poll later on its own clock.
+        var measurement = association.MeasurementFor(new NTPPacket(ReceiveTimestamp:  Wire(serverT2.AddSeconds(64)),
+                                                                   TransmitTimestamp: Wire(serverT3),
+                                                                   DestinationTime:   clientT4.AddSeconds(64)));
+
+        Assert.That(measurement, Is.Not.Null, "the previous exchange's timestamps should still be held");
+
+        var expectedOffset = TimeSpan.FromTicks(((serverT2 - clientT1) + (serverT3 - clientT4)).Ticks / 2);
+
+        Assert.Multiple(() => {
+
+            Assert.That(measurement!.Value.ClockOffset, Is.EqualTo(expectedOffset).Within(TimeSpan.FromMilliseconds(1)),
+                        $"{Why}: the offset should be {expectedOffset.TotalDays / 365.2425:F2} years, but is " +
+                        $"{measurement!.Value.ClockOffset.TotalDays / 365.2425:F2}");
+
+            Assert.That(measurement!.Value.RoundtripDelay, Is.EqualTo(TimeSpan.FromSeconds(2)).Within(TimeSpan.FromMilliseconds(1)),
+                        $"{Why}: three seconds out and back, one inside the server");
+
+        });
+
+    }
+
+
+    /// <summary>
     /// An association that has just been reset holds nothing, so there is no measurement to
     /// complete. Returning a measurement built from missing timestamps would be worse than
     /// returning none: it would look like a reading.
