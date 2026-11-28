@@ -184,7 +184,7 @@ public class NornClientAgainstChronyNtp5Tests
 
         chrony = await ChronyNtsServerFixture.StartAsync(chronyd:           TestEnvironment.ChronyNtp5Daemon,
                                                          chronyc:           TestEnvironment.ChronyNtp5Control,
-                                                         workingDirectory:  "/tmp/nts-interop-ntp5");
+                                                         workingDirectory:  "/tmp/ntpv5-interop-chrony");
 
         if (chrony is null)
             Assert.Ignore("chrony-ntp5 did not start in WSL");

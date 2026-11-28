@@ -95,6 +95,22 @@ jobs:
         with:
           submodules: recursive
 
+      # The NTPv5 peers, chrony-ntp5 and ntp5-exp: the two implementations of
+      # draft-ietf-ntp-ntpv5-10 by its author (§ 14), which nobody packages,
+      # built from source at their -10 commits by the same script a developer
+      # runs in WSL - so the desk and this lane judge Norn's NTPv5 by the same
+      # peers, as they do for chrony and ntpd-rs above. After the checkout,
+      # because the script is in the repository. Into /opt/ntpv5-interop, out
+      # of the way of /usr/sbin/chronyd, which stays Debian's.
+      #
+      # Fatal: without them the 15 NTPv5InteropTests skip, and the skip guard of
+      # the interop step below would turn the night red for want of a build
+      # rather than for anything Norn did. A build that breaks should say so
+      # here, where its log is.
+      - name: Build the NTPv5 peers (Debian container)
+        if: runner.os == 'Linux'
+        run: sh interop/setup-ntpv5-peers.sh
+
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '11.0.x'
@@ -516,6 +532,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+
+      # The NTPv5 peers too, exactly as in full-suite: this lane runs the same
+      # filter, and its zero-skip bar below would otherwise fail on the 15
+      # NTPv5InteropTests. Pinned there and here alike - they are not what this
+      # lane moves, which is chrony and ntpd-rs alone.
+      - name: Build the NTPv5 peers
+        run: sh interop/setup-ntpv5-peers.sh
 
       - uses: actions/setup-dotnet@v6
         with:
