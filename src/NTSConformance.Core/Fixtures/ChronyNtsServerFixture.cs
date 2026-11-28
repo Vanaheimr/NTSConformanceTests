@@ -17,14 +17,19 @@ namespace NTSConformance.Core.Fixtures;
 public sealed class ChronyNtsServerFixture : IAsyncDisposable
 {
 
-    private const String WorkingDirectory = "/tmp/nts-interop";
+    private const String DefaultWorkingDirectory = "/tmp/nts-interop";
 
-    private ChronyNtsServerFixture(String vmAddress, IPPort ntpPort, IPPort ntsKePort, String certificatePath)
+    private readonly String workingDirectory;
+    private readonly String chronyc;
+
+    private ChronyNtsServerFixture(String vmAddress, IPPort ntpPort, IPPort ntsKePort, String certificatePath, String workingDirectory, String chronyc)
     {
         VmAddress        = vmAddress;
         NTPPort          = ntpPort;
         NTSKEPort        = ntsKePort;
         CertificatePath  = certificatePath;
+        this.workingDirectory = workingDirectory;
+        this.chronyc          = chronyc;
     }
 
 
@@ -46,10 +51,21 @@ public sealed class ChronyNtsServerFixture : IAsyncDisposable
     /// Generate a certificate, write a chronyd configuration and start the daemon.
     /// Returns null when the prerequisites are missing, so callers can Assert.Ignore.
     /// </summary>
-    public static async Task<ChronyNtsServerFixture?> StartAsync(TimeSpan? startupTimeout = null)
+    /// <param name="startupTimeout">How long to wait for it to listen.</param>
+    /// <param name="chronyd">The chronyd to run: Debian's by default, or another build such as chrony-ntp5's.</param>
+    /// <param name="chronyc">The chronyc that goes with it.</param>
+    /// <param name="workingDirectory">Where its certificate, configuration and state go: one of its own, so that two builds can run side by side.</param>
+    public static async Task<ChronyNtsServerFixture?> StartAsync(TimeSpan? startupTimeout   = null,
+                                                                 String?   chronyd          = null,
+                                                                 String?   chronyc          = null,
+                                                                 String?   workingDirectory = null)
     {
 
-        if (!Wsl.IsAvailable || !Wsl.HasTool("chronyd") || !Wsl.HasTool("openssl"))
+        var WorkingDirectory = workingDirectory ?? DefaultWorkingDirectory;
+        var daemon           = chronyd          ?? "/usr/sbin/chronyd";
+        var control          = chronyc          ?? "chronyc";
+
+        if (!Wsl.IsAvailable || (chronyd is null && !Wsl.HasTool("chronyd")) || !Wsl.HasTool("openssl"))
             return null;
 
         var vmAddress = Wsl.VmAddress;
@@ -96,7 +112,7 @@ public sealed class ChronyNtsServerFixture : IAsyncDisposable
 
         // -L 0 keeps chronyd in the foreground with logging, so the detached process stays
         // alive for the fixture's lifetime and its output is available on failure.
-        using var started = Wsl.StartDetached($"/usr/sbin/chronyd -f {WorkingDirectory}/chrony.conf -L 0 >/dev/null 2>&1");
+        using var started = Wsl.StartDetached($"{daemon} -f {WorkingDirectory}/chrony.conf -L 0 >/dev/null 2>&1");
 
         var deadline = DateTime.UtcNow + (startupTimeout ?? TimeSpan.FromSeconds(20));
 
@@ -110,13 +126,15 @@ public sealed class ChronyNtsServerFixture : IAsyncDisposable
                 return new ChronyNtsServerFixture(vmAddress,
                                                   IPPort.Parse(ntpPort),
                                                   IPPort.Parse(ntsKePort),
-                                                  $"{WorkingDirectory}/cert.pem");
+                                                  $"{WorkingDirectory}/cert.pem",
+                                                  WorkingDirectory,
+                                                  control);
 
             await Task.Delay(TimeSpan.FromMilliseconds(500));
 
         }
 
-        await StopChronydAsync();
+        await StopChronydAsync(WorkingDirectory);
         return null;
 
     }
@@ -126,11 +144,11 @@ public sealed class ChronyNtsServerFixture : IAsyncDisposable
     /// chronyd's own view of its NTS server state — useful in failure messages.
     /// </summary>
     public String ServerStats()
-        => Wsl.Run($"chronyc -h {VmAddress} -p {NTPPort} serverstats 2>&1 || true",
+        => Wsl.Run($"{chronyc} -h {VmAddress} -p {NTPPort} serverstats 2>&1 || true",
                    TimeSpan.FromSeconds(15)).StdOut;
 
 
-    private static Task StopChronydAsync()
+    private static Task StopChronydAsync(String WorkingDirectory)
     {
         Wsl.Run($"pkill -f 'chronyd -f {WorkingDirectory}' || true", TimeSpan.FromSeconds(20), asRoot: true);
         return Task.CompletedTask;
@@ -139,8 +157,8 @@ public sealed class ChronyNtsServerFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await StopChronydAsync();
-        Wsl.Run($"rm -rf {WorkingDirectory} || true", TimeSpan.FromSeconds(20), asRoot: true);
+        await StopChronydAsync(workingDirectory);
+        Wsl.Run($"rm -rf {workingDirectory} || true", TimeSpan.FromSeconds(20), asRoot: true);
     }
 
 }

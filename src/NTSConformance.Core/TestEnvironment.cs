@@ -169,6 +169,70 @@ public static class TestEnvironment
 
     #endregion
 
+    #region NTPv5 peers (chrony-ntp5, ntp5-exp)
+
+    /// <summary>
+    /// Where interop/setup-ntpv5-peers.sh installs the two NTPv5 peers, inside WSL or on the
+    /// GNU/Linux host - $NTPV5_PEERS there, if it was set.
+    /// </summary>
+    public const String NTPv5PeersDirectory = "/opt/ntpv5-interop";
+
+    /// <summary>
+    /// chronyd of chrony-ntp5, the NTPv5 branch of chrony by the draft's author.
+    /// </summary>
+    public const String ChronyNtp5Daemon    = NTPv5PeersDirectory + "/chrony-ntp5/sbin/chronyd";
+
+    /// <summary>
+    /// chronyc of chrony-ntp5, which reads the NTP version a source was spoken to in.
+    /// </summary>
+    public const String ChronyNtp5Control   = NTPv5PeersDirectory + "/chrony-ntp5/bin/chronyc";
+
+    /// <summary>
+    /// ntpnode.py of ntp5-exp, the draft author's experimental NTPv5+NTPv4 client and server.
+    /// </summary>
+    public const String Ntp5ExpNode         = NTPv5PeersDirectory + "/ntp5-exp/ntpnode.py";
+
+    private const String NTPv5PeersHint     = "Build them with: wsl -u root sh interop/setup-ntpv5-peers.sh";
+
+    private static readonly Lazy<Boolean> hasChronyNtp5 = new(() =>
+        Wsl.IsAvailable &&
+        Wsl.Run($"test -x {ChronyNtp5Daemon} && test -x {ChronyNtp5Control} && {ChronyNtp5Daemon} --version 2>&1", TimeSpan.FromSeconds(15)).
+            StdOut.Contains("+NTS", StringComparison.Ordinal));
+
+    private static readonly Lazy<Boolean> hasNtp5Exp = new(() =>
+        Wsl.IsAvailable &&
+        Wsl.Run($"test -f {Ntp5ExpNode} && python3 {Ntp5ExpNode} --help 2>&1", TimeSpan.FromSeconds(15)).
+            StdOut.Contains("NTPv5", StringComparison.Ordinal));
+
+    /// <summary>
+    /// chrony-ntp5 must be built, with NTS, where interop/setup-ntpv5-peers.sh puts it.
+    /// </summary>
+    public static void RequireChronyNtp5()
+    {
+
+        RequireWsl();
+
+        if (!hasChronyNtp5.Value)
+            Assert.Ignore($"chrony-ntp5 is not built in {NTPv5PeersDirectory} — skipping. {NTPv5PeersHint}");
+
+    }
+
+    /// <summary>
+    /// ntp5-exp must be installed where interop/setup-ntpv5-peers.sh puts it, with a python3
+    /// to run it.
+    /// </summary>
+    public static void RequireNtp5Exp()
+    {
+
+        RequireWsl();
+
+        if (!hasNtp5Exp.Value)
+            Assert.Ignore($"ntp5-exp is not installed in {NTPv5PeersDirectory} — skipping. {NTPv5PeersHint}");
+
+    }
+
+    #endregion
+
     #region Inbound UDP reachability (Windows-hosted server ← WSL client)
 
     /// <summary>

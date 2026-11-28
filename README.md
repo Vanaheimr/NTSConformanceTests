@@ -70,13 +70,15 @@ own 326 included), and one open deviation, the `KnownIssue` above. The one befor
 AES-128-GCM-SIV against chronyd, was resolved and its cause is described under
 [The AES-128-GCM-SIV exporter context](#the-aes-128-gcm-siv-exporter-context).
 
-Interoperability is confirmed against three independent implementations, in every direction:
+Interoperability is confirmed against five independent implementations, in every direction:
 
 | | Norn as client | Norn as NTS server | Norn as plain NTP server |
 |---|:--:|:--:|:--:|
 | **chronyd 4.6.1** | yes | yes, incl. `xleave` + NTS together | yes, incl. RFC 9769 `xleave` and RFC 8633 `RATE` |
 | **ntpd-rs 1.4** | yes | yes | yes |
 | **gnutls-cli** | — | NTS-KE and ALPN | — |
+| **chrony-ntp5** (NTPv5, draft -10) | yes, NTPv5 plain, interleaved, §12 negotiation, and NTS for NTPv5 | yes, in NTPv4: it sends no draft record (see below) | yes, NTPv5 incl. `xleave` and §12 negotiation |
+| **ntp5-exp** (NTPv5, draft -10) | yes, NTPv5 plain, interleaved, §12 negotiation, reference IDs | — | yes, NTPv5 incl. interleaved and §12 negotiation; selected as a source |
 
 Both external implementations validate Norn's certificate and authenticate its replies, through
 GnuTLS and rustls respectively. Public servers — **Cloudflare**, **PTB**, **Netnod** — are
@@ -255,9 +257,28 @@ text of -10, and a server is asked with the draft's Draft Identification field a
 else. Norn answers it on `NTPv5Support.Draft`, plain and with NTS (§11). For NTS the keys
 are the suite's own: the key exchange runs over Norn's SSH listener with the Transported Secret,
 whose keys this side derives itself — with RFC 8915 §5.1's context beginning with `0x8001` — and
-the request and response go through the suite's codec and AEADs alone. No other implementation
-reachable from here speaks it: Debian packages none, and the IETF 127 interop table has ntpd-rs
-answering in NTPv4.
+the request and response go through the suite's codec and AEADs alone.
+
+Two other implementations speak it, both by the draft's author and listed in its §14:
+**chrony-ntp5** and **ntp5-exp**. Neither is packaged anywhere, so
+`interop/setup-ntpv5-peers.sh` builds them from source, pinned to their -10 commits, and
+`NTPv5InteropTests` runs them against Norn both ways (see the table at the top). They are
+asked what they made of Norn themselves — `chronyc ntpdata` for the version and mode chrony-ntp5
+spoke, ntpnode.py's log for what ntp5-exp received, measured and selected. They found two
+things in Norn:
+
+- **NTS keys for NTPv5.** chrony-ntp5 derives them with the NTPv4 exporter context, protocol
+  octets `0x0000`, and seals the same cookies for both protocols. RFC 8915 §5.1 is "Key
+  Extraction (for NTPv4)" with those octets "SHALL be zero", and draft -10 §11 adds no
+  extraction of its own. Norn had used `0x8001` and met silence; it now takes the NTPv4 keys
+  for NTPv5 too, and the cookie alone names the protocol.
+- **More than one next protocol.** chrony-ntp5's NTS-KE server agrees to `[0, 0x8001]` at once,
+  which RFC 8915 §4.1.2 allows ("the client MAY proceed with one or more of them") and Norn's
+  client refused. It now takes any subset of what it offered, and NTPv5 where it is among them.
+
+And one in chrony-ntp5: as an NTS client it offers `0x8001` without the record `0x4001` that
+names the draft, which §11 makes a "MUST" for a draft client. A draft server "MUST not accept
+NTPv5" without it, so Norn's server agrees to NTPv4 with it, and does so authenticated.
 
 | Draft | Focus | |
 |---|---|:--:|
@@ -369,8 +390,8 @@ src/NTSConformance.Core/                 the harness
                                          scripted server that keeps what the client sent, both
                                          also over SSH, and HKDF and the key derivation of
                                          NTS-KE over SSH
-  Fixtures/                              Norn (with an SSH listener where asked) and chronyd server
-                                         fixtures, certificates, DebugX capture
+  Fixtures/                              Norn (with an SSH listener where asked), chronyd and ntp5-exp server
+                                         fixtures, chrony-ntp5 and ntp5-exp as clients, certificates, DebugX capture
   TestClock.cs                           a TimeProvider the test controls: frozen, or displaced
   UdpRelayProbe.cs                       a loopback socket that records who sent what, and can pass it on
   TestEnvironment.cs                     capability probing, Assert.Ignore gating
@@ -387,7 +408,8 @@ conformance/
   NTSConformance.Cookies.Tests/          RFC 8915 §6 — opacity, forgery, rotation
   NTSConformance.CLI.Tests/              the `norn` executable, run as a process
 interop/
-  NTSInterop.LinuxTools.Tests/           chronyd, ntpd-rs and gnutls-cli via WSL
+  NTSInterop.LinuxTools.Tests/           chronyd, ntpd-rs, gnutls-cli, and the NTPv5 peers chrony-ntp5 and ntp5-exp, via WSL
+  setup-ntpv5-peers.sh                   builds the NTPv5 peers from source, pinned to draft -10
   NTSInterop.PublicServers.Tests/        Cloudflare, PTB, Netnod, time.nl
 ```
 
@@ -500,6 +522,15 @@ wsl -u root apt-get install -y chrony ntpd-rs gnutls-bin openssl
 ```
 
 chrony must be built with NTS support — `chronyd --version` should show `+NTS`. Debian's is.
+
+The NTPv5 peers, chrony-ntp5 and ntp5-exp, are built from source into `/opt/ntpv5-interop`
+(a few minutes; the script installs the build dependencies with apt-get):
+
+```bash
+wsl -u root sh interop/setup-ntpv5-peers.sh
+```
+
+Without them, `NTPv5InteropTests` skips and says why.
 
 The chrony tests run **chronyd inside WSL as the NTS server** and connect Norn's client
 outward to it. The reverse direction — chronyd and ntpd-rs as clients against a Norn server on
