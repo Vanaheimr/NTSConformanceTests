@@ -11,7 +11,8 @@ Security), **RFC 5297** (AES-SIV), **RFC 4493** (AES-CMAC), **RFC 3686** (AES-CT
 **RFC 8446** (TLS 1.3), **RFC 7301** (ALPN), **RFC 5480** (EC key encoding), **RFC 9109**
 (port randomization), **RFC 9748** (the NTP registries), **RFC 9769** (interleaved modes),
 **RFC 8633** (the NTP BCP), **RFC 9525** (service identity in TLS)
-and **RFC 7384** (security requirements for time protocols) — see [RFC coverage](#rfc-coverage) for what is asserted,
+and **RFC 7384** (security requirements for time protocols), as well as NTP over TLS after
+**BSI TR-03109-5** chapter 7 — see [RFC coverage](#rfc-coverage) for what is asserted,
 what is planned, and what is deliberately out of scope. It also recomputes the test vectors of
 the specification of the **SSH Key Binding** record, the key derivation of NTS-KE over SSH,
 holds Norn's and Hermod's derivation to them, and drives the record on the wire against Norn's
@@ -335,6 +336,45 @@ mode seven; each failed a test.
 | §11, RFC 8915 §4.1.2 | The key exchange, over TLS and over SSH: NTPv5 offered before NTPv4 in one critical record, the draft named in record `0x4001`, not critical and unterminated; NTPv4 alone and no draft without NTPv5. NTPv5 proceeded with where it is among what was agreed, alone or beside NTPv4 in either order, NTPv4 where it is not; nothing agreed, a protocol not offered — alone or beside one that was — and NTPv5 to a client that did not offer it refused; an echoed `0x4001` ignored | ✅ |
 | §11, SSH Key Binding 1.2 §5.4 | Over SSH the keys of NTPv5 those of NTPv4's context `0x0000`, from the Transported Secret and from the SSH Exporter, not those of `0x8001`; and taken for NTPv5: a scripted server that answers only a request under the keys derived here, and seals under them, is queried and authenticated | ✅ |
 | §11 | Against Norn's server: NTPv5 agreed and two authenticated NTPv5 queries, over TLS and over SSH with either method; NTPv4 for a client or a server without NTPv5, its NTPv4 query authenticated and an NTPv5 query refused before it is sent | ✅ |
+
+### NTP over TLS — BSI TR-03109-5 chapter 7
+
+The NTP of German smart meter gateways: an NTPv4 client/server exchange of RFC 5905 carried in
+a TLS connection instead of UDP datagrams, as [TR-03109-5](https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/Publikationen/TechnischeRichtlinien/TR03109/TR-03109-5_Detailspezifikationen.pdf)
+(version 1.0, 2023-11-24) has it. On the wire it is the bare 48-octet header in either
+direction - no length prefix, no extension fields, no MAC - and chapter 6 says how the
+connection is made. Norn serves it on `NTSServer.NTPOverTLSPort`, under the certificate NTS-KE
+shows, and asks it with `NTPOverTLSClient`. There is no NTPv5 over TLS: the guideline knows
+NTPv4 alone.
+
+Both directions are held to it over the platform's own TLS (`SslStream`: SChannel on Windows,
+OpenSSL on Linux), never the BouncyCastle both ends of Norn run on, with this suite's NTP codec
+(`RawNtpOverTls/`): `NtpOverTlsServerTests` against Norn's server, `NtpOverTlsClientTests`
+against a scripted server that keeps what it was sent and answers what a test tells it to.
+
+| Requirement | Focus | |
+|---|---|:--:|
+| BuildRequest.10, .20, .30 | The client's request is an NTPv4 client request of 48 octets, without extensions, and nothing follows it on the connection | ✅ |
+| BuildRequest.40, Table 7.1 | A minimized request: zero everywhere but version 4, mode 3, precision 32 and a random transmit timestamp - the default; an ordinary one carries the client's clock | ✅ |
+| ProcessResponse.10 | A response delayed more than 9 s is ignored | ✅ |
+| ProcessResponse.30 | One whose origin is not the request's transmit timestamp is ignored | ✅ |
+| ProcessResponse.40 | One whose transmit timestamp cannot be converted (zero) is ignored | ✅ |
+| ProcessResponse.50, .51, .52 | Leap indicator 3, a version below 4, a mode other than 4: each ignored | ✅ |
+| ProcessResponse.110 | More than 1000 s off a synchronized clock is ignored; the same response sets an unsynchronized one (§ 7.1.1) | ✅ |
+| § 7.3.2.1 | The offset of the server's clock, and the maximum error `rootdelay/2 + rootdisp` | ✅ |
+| § 7.1.1 | A kiss is not processed: stratum 0 is no time | ✅ |
+| Table 7.1, note | Norn's server answers an ordinary and a minimized request alike: version 4, mode 4, the origin echoed, synchronized, no extension fields - and several on one connection | ✅ |
+| § 7.1.1, RFC 5905 § 9.2 | What is no client request of NTPv1 to NTPv4 - mode 1, 4 or 5, or an NTPv5 header - is not answered, and the connection ends | ✅ |
+| TLS.Handshake.10, .180, .190 | TLS 1.2 and 1.3 on both ends, the fallback to 1.2 on both, nothing below 1.2; an RSA server key over TLS 1.2 gets an ECDHE_RSA suite | ✅ |
+| TLS.OpenHanSessionAsClient.30 | The client names the server by SNI, and sends none for a literal address | ✅ |
+| TLS.Handshake.130, .160 | An untrusted server certificate ends the handshake, before any request | ✅ |
+| Client certificates | A server told to judge them answers no client without one, over 1.2 and 1.3, and shows the validator the one it was given; the client shows its own where it is asked | ✅ |
+| ALPN | None needed, and none selected for a client that offers one | ✅ |
+
+What the guideline leaves open, Norn decides: the server answers as many requests as one
+connection brings and closes a connection silent for 30 s; the client sends one request per
+connection. The Extended Key Usage *Time Stamping* that the Secure Time Sync white paper names for the
+gateway's certificate is not checked by Norn's client; a validator of one's own can.
 
 ### The command line
 
