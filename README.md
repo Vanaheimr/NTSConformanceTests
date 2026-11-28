@@ -306,6 +306,30 @@ NTPv5" without it, so Norn's server agrees to NTPv4 with it, and does so authent
 | §7.10 | Secondary Receive Timestamp: 16 octets, in UTC the header's own era and receive timestamp, in TAI exactly 37 s later, zero for a timescale supported without a value, an unsupported timescale ignored and padded for, every supported one of several requested answered once | ✅ |
 | §7.3 | MAC | — |
 
+Norn's NTPv5 client is tested against `ScriptedNtpV5Server`, a loopback server that answers each
+request with whatever a test scripts. Its responses are written with the suite's codec and,
+under NTS, sealed with keys of an NTS-KE response the suite assembles from records. The client's
+clock stands still, so T1 and T4 are one known instant and every offset comes out exactly. A
+response the client must ignore is sent first with 1000 s, a valid one after it with 10 s:
+only a client that ignored the first and kept waiting measures 10 s, as §9 step 4 has it ("MUST
+ignore all invalid responses and accept only the first valid response"). Each check was taken
+out of Norn in turn, and 20 of 23 removals failed a test. Three did not because they change
+nothing: a flag the client does not know is one it did not set, a correction too big to be
+represented makes delay_c negative, and the §12 echo is checked twice.
+
+| Draft | Focus — Norn as NTPv5 client | |
+|---|---|:--:|
+| §6, §9 | The request: version 5, mode 3, a multiple of 4 octets, every header field zero but timescale, flags and client cookie, the timescale asked for, the flags of the mode asked for (0x1 for an unsynchronized server, 0x4 under NTS), a new random client cookie every time | ✅ |
+| §7.1, §7.4, §7.7 | The Draft Identification once, by its full name, unterminated; Reference IDs requested from index 0 by a client that serves time, in a multiple of 8 octets, at one length for the association; a Correction only where asked, 28 octets of zeros, last — under NTS after the authenticator | ✅ |
+| §11, RFC 8915 §5.7 | The NTS request: one Unique Identifier of at least 32 octets, one cookie from the key exchange and one authenticator opening under the C2S key over everything before it, placeholders as long as the cookie, a new identifier and cookie every time | ✅ |
+| §9, §12 | Ignored, with the next valid response taken: another version or mode, another client cookie, a zero one (an NTPv4 server's), an unknown flag or one the request did not set, a malformed message, a response from another port; of two valid ones the first. Reserved bits, Padding and a missing Draft Identification do not make a response invalid | ✅ |
+| §9, §11, RFC 8915 §5.7 | Under NTS ignored: no authenticator, the C2S key, a changed byte, another or no Unique Identifier, one only after the authenticator; new cookies taken from inside the authenticator only | ✅ |
+| §6, §7.3 | The Authentication NAK: no time, reported as a NAK, overtaken by a valid response after it, not believed without the request's Unique Identifier, and then without costing the cookies | ✅ |
+| §9 | Usable only when synchronized, of stratum 1 to 15 or a configured maximum, root delay and dispersion within their maximum and not infinite, the timescale asked for and both timestamps set | ✅ |
+| §8, §9 | Offset and delay of the four timestamps; the era expanded, in 2036 and for a transmit timestamp across the rollover; corrections applied as §8 has them, with frequency error and frame times, and not where Co, Cd or delay_c is negative, where one is too big to be represented, where none was asked for — and applied after the authenticator under NTS | ✅ |
+| §6, §9 | The poll field: no request before its interval, none at all after 127 (also at stratum 0), and an absurd one followed no further than 2^18 s | ✅ |
+| §12 | Negotiation: NTPv4 first with "NTP5DRFT" in the reference timestamp, NTPv5 after its echo and not after "NTP5NTP5" or none, back to NTPv4 after two unanswered NTPv5 requests and not after one, the magic not followed while sticking with NTPv4, and advertised again after | ✅ |
+
 ### The command line
 
 Norn ships a `norn` executable alongside the library (`libs/Norn/NornCLI`), and this suite
@@ -365,8 +389,8 @@ Deliberately not covered, and why:
   grew the transport.
 - **The rest of NTPv5** — `draft-ietf-ntp-ntpv5-10` (October 2026), Standards Track
   and still moving: -10 alone dropped leap-second announcements, redefined the clock status
-  flag and the Time32 format, and replaced the reference-ID Bloom filter. What Norn answers of
-  it is tested [above](#ntpv5--draft-ietf-ntp-ntpv5-10), pinned to -10; only the MAC waits
+  flag and the Time32 format, and replaced the reference-ID Bloom filter. What Norn answers and
+  asks of it is tested [above](#ntpv5--draft-ietf-ntp-ntpv5-10), pinned to -10; only the MAC waits
   for Norn to do it.
 - **RFC 10049 Roughtime** — October 2026, Experimental. A different protocol with a different
   goal: rough time from servers you need not trust individually, on its own port (5319) with
