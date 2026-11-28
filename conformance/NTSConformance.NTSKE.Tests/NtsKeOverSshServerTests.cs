@@ -282,28 +282,75 @@ public class NtsKeOverSshServerTests
     /// The Method Data is drawn anew for every exchange — here four on one connection, where
     /// for method 0x0001 the nonce is all that keeps their keys apart (Section 4.3).
     /// </summary>
+    /// <remarks>
+    /// The first of these cases hung for 15 seconds on the debian-13 CI container, twice in
+    /// three runs on 2026-11-28 and once on 2026-11-19, each time right after the bad requests
+    /// above, and never locally. So a failure says which of the four exchanges it was, how long
+    /// each took, and what the server saw meanwhile: how many key exchanges it began and
+    /// answered, and the ones it reported.
+    /// </remarks>
     [TestCase(RawSshKeyBinding.MethodSshExporter,       TestName = "EveryExchangeOnAConnection_GetsANonceOfItsOwn")]
     [TestCase(RawSshKeyBinding.MethodTransportedSecret, TestName = "EveryExchangeOnAConnection_GetsASecretOfItsOwn")]
     public async Task EveryExchange_GetsMethodDataOfItsOwn(UInt16 methodId)
     {
 
-        await using var sshClient = await fixture!.ConnectSshAsync(ClientKey);
+        var server    = fixture!.Server;
+        var before    = server.Metrics;
+        var reported  = new System.Collections.Concurrent.ConcurrentQueue<String>();
+        var started   = System.Diagnostics.Stopwatch.StartNew();
 
-        var data = new List<String>();
+        void Report(NTSKEOverSSHExchange e)
+            => reported.Enqueue($"{started.Elapsed.TotalMilliseconds:F0} ms: {e.Method?.ToString() ?? "no method"}, " +
+                                $"{e.Cookies} cookies{(e.ErrorCode is null ? "" : $", error {e.ErrorCode}")}{(e.Problem is null ? "" : $", {e.Problem}")}");
 
-        for (var i = 0; i < 4; i++)
+        server.OnSSHKeyExchange += Report;
+
+        try
         {
 
-            var exchange      = await RawNtsKeOverSsh.ExchangeAsync(sshClient, Request(RawNtsKeRecord.SshKeyBinding(RawSshKeyBinding.RequestBody(methodId))));
-            var (selected, d) = SelectionOf(exchange);
+            await using var sshClient = await fixture!.ConnectSshAsync(ClientKey);
 
-            Assert.That(selected, Is.EqualTo(methodId), exchange.ToString());
+            var connected = started.Elapsed;
+            var data      = new List<String>();
+            var took      = new List<String>();
 
-            data.Add(Bytes.ToHex(d));
+            for (var i = 0; i < 4; i++)
+            {
+
+                var watch    = System.Diagnostics.Stopwatch.StartNew();
+                var exchange = await RawNtsKeOverSsh.ExchangeAsync(sshClient, Request(RawNtsKeRecord.SshKeyBinding(RawSshKeyBinding.RequestBody(methodId))));
+
+                took.Add($"{watch.Elapsed.TotalMilliseconds:F0} ms");
+
+                if (exchange.Records is null)
+                {
+
+                    var after = server.Metrics;
+
+                    Assert.Fail($"exchange {i + 1} of 4 on the connection failed after {String.Join(", ", took)} " +
+                                $"(connected after {connected.TotalMilliseconds:F0} ms): {exchange.Diagnosis}" + Environment.NewLine +
+                                $"the server, meanwhile: {after.NTSKEConnectionsAccepted - before.NTSKEConnectionsAccepted} key exchanges begun, " +
+                                $"{after.NTSKEResponsesSent       - before.NTSKEResponsesSent} answered, " +
+                                $"{after.NTSKEConnectionsRejected - before.NTSKEConnectionsRejected} rejected; reported: " +
+                                (reported.IsEmpty ? "none" : String.Join("; ", reported)));
+
+                }
+
+                var (selected, d) = SelectionOf(exchange);
+
+                Assert.That(selected, Is.EqualTo(methodId), exchange.ToString());
+
+                data.Add(Bytes.ToHex(d));
+
+            }
+
+            Assert.That(data, Is.Unique, String.Join(Environment.NewLine, data));
 
         }
-
-        Assert.That(data, Is.Unique, String.Join(Environment.NewLine, data));
+        finally
+        {
+            server.OnSSHKeyExchange -= Report;
+        }
 
     }
 

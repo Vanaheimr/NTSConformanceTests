@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Authentication;
 
 using org.GraphDefined.Vanaheimr.Hermod.SSH;
@@ -44,16 +45,42 @@ public static class RawNtsKeOverSsh
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(effectiveTimeout);
 
-        SshMuxChannel channel;
+        // What SSHClient.OpenSubsystem does, in its two steps, so that a failure says which of them
+        // it was: the session channel not confirmed, or the subsystem request not answered. A
+        // timeout of either is a message that never came back, and the state of the connection
+        // and of the thread pool at that moment is what tells a lost message from a starved one.
+        var           watch    = Stopwatch.StartNew();
+        var           phase    = "opening the session channel";
+        SshMuxChannel? opening = null;
+        SshMuxChannel  channel;
 
         try
         {
-            channel = await sshClient.OpenSubsystem(SubsystemName, timeoutCts.Token);
+
+            opening = await sshClient.Multiplexer.OpenChannelAsync("session", CancellationToken: timeoutCts.Token);
+
+            phase   = $"asking for the subsystem on channel {opening.LocalId}, confirmed after {watch.Elapsed.TotalMilliseconds:F0} ms";
+
+            if (!await opening.SendRequestAsync("subsystem", true, SshSessionChannel.EncodeString(SubsystemName), timeoutCts.Token))
+            {
+                try { await opening.CloseAsync(CancellationToken.None); } catch { }
+                return new RawNtsKeExchange(false, null, SslProtocols.None, null, false,
+                                            $"the subsystem {SubsystemName} could not be opened: the server refused it");
+            }
+
+            channel = opening;
+
         }
         catch (Exception e)
         {
+
+            if (opening is not null)
+                try { await opening.CloseAsync(CancellationToken.None); } catch { }
+
             return new RawNtsKeExchange(false, null, SslProtocols.None, null, false,
-                                        $"the subsystem {SubsystemName} could not be opened: {e.Message}");
+                                        $"the subsystem {SubsystemName} could not be opened: {e.Message} " +
+                                        $"(while {phase}; {watch.Elapsed.TotalMilliseconds:F0} ms in; {StateOf(sshClient)})");
+
         }
 
         try
@@ -77,7 +104,8 @@ public static class RawNtsKeOverSsh
         catch (OperationCanceledException)
         {
             return new RawNtsKeExchange(true, null, SslProtocols.None, null, false,
-                                        $"the server sent no complete reply within {effectiveTimeout}");
+                                        $"the server sent no complete reply within {effectiveTimeout} " +
+                                        $"(on channel {channel.LocalId}; {StateOf(sshClient)})");
         }
         catch (Exception e)
         {
@@ -88,6 +116,24 @@ public static class RawNtsKeOverSsh
         {
             try { await channel.CloseAsync(CancellationToken.None); } catch { }
         }
+
+    }
+
+
+    /// <summary>
+    /// The state of the SSH connection and of this process's thread pool, for a diagnosis: whether
+    /// the connection ended, how long ago a channel message last crossed it in either direction,
+    /// and how many threads the pool has against how much work waits for one.
+    /// </summary>
+    public static String StateOf(SSHClient sshClient)
+    {
+
+        ThreadPool.GetMinThreads(out var minWorkers, out _);
+
+        return $"connection {(sshClient.EndReason is Exception ended ? $"ended: {ended.Message}" : sshClient.Closed.IsCompleted ? "closed" : "open")}, " +
+               $"no channel message for {sshClient.Multiplexer.ChannelIdleTime.TotalMilliseconds:F0} ms; " +
+               $"thread pool {ThreadPool.ThreadCount} threads (minimum {minWorkers}), " +
+               $"{ThreadPool.PendingWorkItemCount} work items waiting, at {DateTimeOffset.UtcNow:HH:mm:ss.fff} UTC";
 
     }
 
