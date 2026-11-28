@@ -257,8 +257,7 @@ are the suite's own: the key exchange runs over Norn's SSH listener with the Tra
 whose keys this side derives itself — with RFC 8915 §5.1's context beginning with `0x8001` — and
 the request and response go through the suite's codec and AEADs alone. No other implementation
 reachable from here speaks it: Debian packages none, and the IETF 127 interop table has ntpd-rs
-answering in NTPv4. What NTPv5 changes compared with NTPv4 is summed up in
-[`RawNtpV5/README.md`](src/NTSConformance.Core/RawNtpV5/README.md).
+answering in NTPv4.
 
 | Draft | Focus | |
 |---|---|:--:|
