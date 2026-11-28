@@ -111,6 +111,8 @@ public class NTPv5NtsTests
     /// A key exchange over SSH, for the given protocol and algorithm, with the given method of
     /// the SSH Key Binding record alone on offer, and the keys under the context of
     /// <paramref name="ContextProtocol"/> - by default 0x0000, NTPv4's, whatever was agreed.
+    /// <paramref name="Offered"/> is what the request offers, by default the protocol alone;
+    /// <paramref name="NextProtocol"/> is what the server must agree to.
     /// </summary>
     /// <remarks>
     /// The Transported Secret is HKDF-Expand-SHA256 of the secret the server sends, computed
@@ -122,17 +124,20 @@ public class NTPv5NtsTests
                                                    UInt16             Aead             = 15,
                                                    UInt16             NextProtocol     = RawNtsKeNextProtocols.Ntpv5Draft,
                                                    UInt16?            ContextProtocol  = null,
-                                                   UInt16             Method           = RawSshKeyBinding.MethodTransportedSecret)
+                                                   UInt16             Method           = RawSshKeyBinding.MethodTransportedSecret,
+                                                   UInt16[]?          Offered          = null)
     {
+
+        var offered = Offered ?? [ NextProtocol ];
 
         await using var ssh = await Server.ConnectSshAsync(ClientKey);
 
         var exchange = await RawNtsKeOverSsh.ExchangeAsync(
                                  ssh,
                                  RawNtsKeCodec.Encode([
-                                     RawNtsKeRecord.NextProtocolNegotiation(NextProtocol),
+                                     RawNtsKeRecord.NextProtocolNegotiation(offered),
                                      RawNtsKeRecord.AeadAlgorithmNegotiation(Aead),
-                                     .. (NextProtocol == RawNtsKeNextProtocols.Ntpv5Draft ? new[] { DraftRecord() } : []),
+                                     .. (offered.Contains(RawNtsKeNextProtocols.Ntpv5Draft) ? new[] { DraftRecord() } : []),
                                      RawNtsKeRecord.SshKeyBinding(RawSshKeyBinding.RequestBody(Method)),
                                      RawNtsKeRecord.EndOfMessage()
                                  ]));
@@ -243,20 +248,48 @@ public class NTPv5NtsTests
     #region NTS-KE: agreeing to NTPv5 (§ 11)
 
     /// <summary>
+    /// One key exchange of the given records, over TLS or over SSH. Over SSH the SSH Key Binding
+    /// record is added before End of Message, offering the Transported Secret - without it the
+    /// server has no keys to give, and a test of what it agrees to would be one of a Bad Request.
+    /// </summary>
+    private static async Task<RawNtsKeExchange> Negotiate(NornServerFixture        Server,
+                                                          NtsKeTransport           Transport,
+                                                          params RawNtsKeRecord[]  Records)
+    {
+
+        if (Transport == NtsKeTransport.Tls)
+            return await OverTls(Server, Records);
+
+        await using var ssh = await Server.ConnectSshAsync(ClientKey);
+
+        return await RawNtsKeOverSsh.ExchangeAsync(
+                         ssh,
+                         RawNtsKeCodec.Encode([
+                             .. Records.Where(record => record.RecordType != RawNtsKeRecordTypes.EndOfMessage),
+                             RawNtsKeRecord.SshKeyBinding(RawSshKeyBinding.RequestBody(RawSshKeyBinding.MethodTransportedSecret)),
+                             RawNtsKeRecord.EndOfMessage()
+                         ]));
+
+    }
+
+
+    /// <summary>
     /// § 11: NTPv5 "can be indicated as the next protocol with identifier [[TBD]] (draft use
     /// 0x8001)", and a client of the draft names its draft in record 0x4001. Then the server
     /// agrees to 0x8001, with an algorithm and cookies, which § 11 takes over from NTPv4's
     /// records: "No new NTS-KE records are specified for NTPv5".
     /// </summary>
-    [Test]
-    public async Task TheDraftNamed_NTPv5IsAgreed()
+    [TestCase(NtsKeTransport.Tls, TestName = "TheDraftNamed_NTPv5IsAgreed_OverTls")]
+    [TestCase(NtsKeTransport.Ssh, TestName = "TheDraftNamed_NTPv5IsAgreed_OverSsh")]
+    public async Task TheDraftNamed_NTPv5IsAgreed(NtsKeTransport Transport)
     {
 
-        var exchange = await OverTls(Server,
-                                     RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft, RawNtsKeNextProtocols.Ntpv4),
-                                     RawNtsKeRecord.AeadAlgorithmNegotiation(15),
-                                     DraftRecord(),
-                                     RawNtsKeRecord.EndOfMessage());
+        var exchange = await Negotiate(Server,
+                                       Transport,
+                                       RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft, RawNtsKeNextProtocols.Ntpv4),
+                                       RawNtsKeRecord.AeadAlgorithmNegotiation(15),
+                                       DraftRecord(),
+                                       RawNtsKeRecord.EndOfMessage());
 
         Assert.Multiple(() => {
             Assert.That(exchange.ErrorCode,          Is.Null,                                                $"an Error record\n{exchange}");
@@ -274,18 +307,23 @@ public class NTPv5NtsTests
     /// support the specific draft version identified." No draft named, another draft, the right
     /// one with a trailing zero or in other case: NTPv4, which the client offered as well.
     /// </summary>
-    [TestCase(null,                        TestName = "WithoutTheDraftRecord_NTPv4IsAgreed")]
-    [TestCase("draft-ietf-ntp-ntpv5-09",   TestName = "WithAnotherDraft_NTPv4IsAgreed")]
-    [TestCase("draft-ietf-ntp-ntpv5-10\0", TestName = "WithTheDraftAndATrailingZero_NTPv4IsAgreed")]
-    [TestCase("DRAFT-IETF-NTP-NTPV5-10",   TestName = "WithTheDraftInUpperCase_NTPv4IsAgreed")]
-    public async Task WithoutThisDraft_NTPv4IsAgreed(String? Identification)
+    [TestCase(NtsKeTransport.Tls, null,                        TestName = "WithoutTheDraftRecord_NTPv4IsAgreed_OverTls")]
+    [TestCase(NtsKeTransport.Tls, "draft-ietf-ntp-ntpv5-09",   TestName = "WithAnotherDraft_NTPv4IsAgreed_OverTls")]
+    [TestCase(NtsKeTransport.Tls, "draft-ietf-ntp-ntpv5-10\0", TestName = "WithTheDraftAndATrailingZero_NTPv4IsAgreed_OverTls")]
+    [TestCase(NtsKeTransport.Tls, "DRAFT-IETF-NTP-NTPV5-10",   TestName = "WithTheDraftInUpperCase_NTPv4IsAgreed_OverTls")]
+    [TestCase(NtsKeTransport.Ssh, null,                        TestName = "WithoutTheDraftRecord_NTPv4IsAgreed_OverSsh")]
+    [TestCase(NtsKeTransport.Ssh, "draft-ietf-ntp-ntpv5-09",   TestName = "WithAnotherDraft_NTPv4IsAgreed_OverSsh")]
+    [TestCase(NtsKeTransport.Ssh, "draft-ietf-ntp-ntpv5-10\0", TestName = "WithTheDraftAndATrailingZero_NTPv4IsAgreed_OverSsh")]
+    [TestCase(NtsKeTransport.Ssh, "DRAFT-IETF-NTP-NTPV5-10",   TestName = "WithTheDraftInUpperCase_NTPv4IsAgreed_OverSsh")]
+    public async Task WithoutThisDraft_NTPv4IsAgreed(NtsKeTransport Transport, String? Identification)
     {
 
-        var exchange = await OverTls(Server,
-                                     [ RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft, RawNtsKeNextProtocols.Ntpv4),
-                                       RawNtsKeRecord.AeadAlgorithmNegotiation(15),
-                                       .. (Identification is null ? Array.Empty<RawNtsKeRecord>() : [ DraftRecord(Identification) ]),
-                                       RawNtsKeRecord.EndOfMessage() ]);
+        var exchange = await Negotiate(Server,
+                                       Transport,
+                                       [ RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft, RawNtsKeNextProtocols.Ntpv4),
+                                         RawNtsKeRecord.AeadAlgorithmNegotiation(15),
+                                         .. (Identification is null ? Array.Empty<RawNtsKeRecord>() : [ DraftRecord(Identification) ]),
+                                         RawNtsKeRecord.EndOfMessage() ]);
 
         Assert.Multiple(() => {
             Assert.That(exchange.ErrorCode,       Is.Null,                                           $"an Error record\n{exchange}");
@@ -301,14 +339,16 @@ public class NTPv5NtsTests
     /// server MUST NOT ... include ... protocols which were not offered by the client" - and no
     /// cookies, since nothing was agreed for them to be cookies of.
     /// </summary>
-    [Test]
-    public async Task NTPv5Alone_WithoutTheDraftRecord_NothingIsAgreed()
+    [TestCase(NtsKeTransport.Tls, TestName = "NTPv5Alone_WithoutTheDraftRecord_NothingIsAgreed_OverTls")]
+    [TestCase(NtsKeTransport.Ssh, TestName = "NTPv5Alone_WithoutTheDraftRecord_NothingIsAgreed_OverSsh")]
+    public async Task NTPv5Alone_WithoutTheDraftRecord_NothingIsAgreed(NtsKeTransport Transport)
     {
 
-        var exchange = await OverTls(Server,
-                                     RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft),
-                                     RawNtsKeRecord.AeadAlgorithmNegotiation(15),
-                                     RawNtsKeRecord.EndOfMessage());
+        var exchange = await Negotiate(Server,
+                                       Transport,
+                                       RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft),
+                                       RawNtsKeRecord.AeadAlgorithmNegotiation(15),
+                                       RawNtsKeRecord.EndOfMessage());
 
         Assert.Multiple(() => {
             Assert.That(NextProtocolOf(exchange),                                       Is.Empty, $"a protocol agreed\n{exchange}");
@@ -319,18 +359,82 @@ public class NTPv5NtsTests
 
 
     /// <summary>
+    /// RFC 8915 § 4.1.2: what the server agrees to "MUST comprise a subset of those listed in
+    /// the request", and "the client MAY proceed with one or more of them" - the RFC gives the
+    /// order of the client's list no meaning. Norn takes it for the client's preference and
+    /// agrees to the first it supports, one protocol alone: NTPv4 for a client that lists it
+    /// first, NTPv5 for one that lists NTPv5 first, the draft named either way.
+    /// </summary>
+    [TestCase(NtsKeTransport.Tls, RawNtsKeNextProtocols.Ntpv4,      RawNtsKeNextProtocols.Ntpv5Draft, TestName = "TheClientsFirst_IsAgreed_NTPv4First_OverTls")]
+    [TestCase(NtsKeTransport.Tls, RawNtsKeNextProtocols.Ntpv5Draft, RawNtsKeNextProtocols.Ntpv4,      TestName = "TheClientsFirst_IsAgreed_NTPv5First_OverTls")]
+    [TestCase(NtsKeTransport.Ssh, RawNtsKeNextProtocols.Ntpv4,      RawNtsKeNextProtocols.Ntpv5Draft, TestName = "TheClientsFirst_IsAgreed_NTPv4First_OverSsh")]
+    [TestCase(NtsKeTransport.Ssh, RawNtsKeNextProtocols.Ntpv5Draft, RawNtsKeNextProtocols.Ntpv4,      TestName = "TheClientsFirst_IsAgreed_NTPv5First_OverSsh")]
+    public async Task TheClientsFirst_IsAgreed(NtsKeTransport Transport, UInt16 First, UInt16 Second)
+    {
+
+        var exchange = await Negotiate(Server,
+                                       Transport,
+                                       RawNtsKeRecord.NextProtocolNegotiation(First, Second),
+                                       RawNtsKeRecord.AeadAlgorithmNegotiation(15),
+                                       DraftRecord(),
+                                       RawNtsKeRecord.EndOfMessage());
+
+        Assert.Multiple(() => {
+            Assert.That(exchange.ErrorCode,       Is.Null,                       $"an Error record\n{exchange}");
+            Assert.That(NextProtocolOf(exchange), Is.EqualTo(new[] { First }),   $"the protocol agreed\n{exchange}");
+            Assert.That(exchange.RecordsOfType(RawNtsKeRecordTypes.NewCookieForNtpv4), Is.Not.Empty, $"no cookie\n{exchange}");
+        });
+
+    }
+
+
+    /// <summary>
+    /// And the cookies of what was agreed are good for it: from a key exchange over SSH that
+    /// offered both, in either order, an NTPv5 request is answered where NTPv5 was agreed, and
+    /// an NTPv4 request where NTPv4 was - each under the keys derived on this side.
+    /// </summary>
+    [TestCase(RawNtsKeNextProtocols.Ntpv4,      RawNtsKeNextProtocols.Ntpv5Draft, TestName = "TheCookiesOfWhatWasAgreed_AreGoodForIt_NTPv4First")]
+    [TestCase(RawNtsKeNextProtocols.Ntpv5Draft, RawNtsKeNextProtocols.Ntpv4,      TestName = "TheCookiesOfWhatWasAgreed_AreGoodForIt_NTPv5First")]
+    public async Task TheCookiesOfWhatWasAgreed_AreGoodForIt(UInt16 First, UInt16 Second)
+    {
+
+        var session = await KeyExchange(Server, NextProtocol: First, Offered: [ First, Second ]);
+
+        if (First == RawNtsKeNextProtocols.Ntpv5Draft)
+        {
+            Verified(session, Send(Server, session), "an NTPv5 request with a cookie of the exchange");
+            return;
+        }
+
+        var reply = RawNtpExchange.TryExchange(RawNtsExtensionFields.BuildNtsRequest(session.C2SKey, session.Cookies[0]),
+                                               "127.0.0.1",
+                                               Server.NTPPort);
+
+        Assert.That(reply, Is.Not.Null, "an NTPv4 request with a cookie of the exchange was not answered");
+
+        Assert.Multiple(() => {
+            Assert.That(reply!.IsKissOfDeath, Is.False, reply.ToString());
+            Assert.That(RawNtsExtensionFields.TryVerifyAuthenticator(reply, session.S2CKey, out _, out var error), Is.True, error);
+        });
+
+    }
+
+
+    /// <summary>
     /// § 11 has the client name its draft, not the server: Norn says that it supports it by
     /// agreeing to 0x8001, and does not send record 0x4001 back.
     /// </summary>
-    [Test]
-    public async Task TheDraftRecord_IsNotEchoed()
+    [TestCase(NtsKeTransport.Tls, TestName = "TheDraftRecord_IsNotEchoed_OverTls")]
+    [TestCase(NtsKeTransport.Ssh, TestName = "TheDraftRecord_IsNotEchoed_OverSsh")]
+    public async Task TheDraftRecord_IsNotEchoed(NtsKeTransport Transport)
     {
 
-        var exchange = await OverTls(Server,
-                                     RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft),
-                                     RawNtsKeRecord.AeadAlgorithmNegotiation(15),
-                                     DraftRecord(),
-                                     RawNtsKeRecord.EndOfMessage());
+        var exchange = await Negotiate(Server,
+                                       Transport,
+                                       RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft),
+                                       RawNtsKeRecord.AeadAlgorithmNegotiation(15),
+                                       DraftRecord(),
+                                       RawNtsKeRecord.EndOfMessage());
 
         Assert.Multiple(() => {
             Assert.That(NextProtocolOf(exchange),                                              Is.EqualTo(new[] { RawNtsKeNextProtocols.Ntpv5Draft }), exchange.ToString());
@@ -346,15 +450,17 @@ public class NTPv5NtsTests
     /// with it was refused with Bad Request - every client of the draft was. Now the record is
     /// 0x4E01, and 0x4001 is no reason to refuse anything.
     /// </summary>
-    [Test]
-    public async Task TheDraftRecord_WithNTPv4Alone_IsNoBadRequest()
+    [TestCase(NtsKeTransport.Tls, TestName = "TheDraftRecord_WithNTPv4Alone_IsNoBadRequest_OverTls")]
+    [TestCase(NtsKeTransport.Ssh, TestName = "TheDraftRecord_WithNTPv4Alone_IsNoBadRequest_OverSsh")]
+    public async Task TheDraftRecord_WithNTPv4Alone_IsNoBadRequest(NtsKeTransport Transport)
     {
 
-        var exchange = await OverTls(Server,
-                                     RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv4),
-                                     RawNtsKeRecord.AeadAlgorithmNegotiation(15),
-                                     DraftRecord(),
-                                     RawNtsKeRecord.EndOfMessage());
+        var exchange = await Negotiate(Server,
+                                       Transport,
+                                       RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv4),
+                                       RawNtsKeRecord.AeadAlgorithmNegotiation(15),
+                                       DraftRecord(),
+                                       RawNtsKeRecord.EndOfMessage());
 
         Assert.Multiple(() => {
             Assert.That(exchange.ErrorCode,                                             Is.Null,                                           $"an Error record\n{exchange}");
@@ -390,14 +496,16 @@ public class NTPv5NtsTests
     /// offering it without an AEAD Algorithm Negotiation record is refused as RFC 8915 § 4.1.5
     /// has one for NTPv4 refused.
     /// </summary>
-    [Test]
-    public async Task NTPv5WithoutAnAeadRecord_IsABadRequest()
+    [TestCase(NtsKeTransport.Tls, TestName = "NTPv5WithoutAnAeadRecord_IsABadRequest_OverTls")]
+    [TestCase(NtsKeTransport.Ssh, TestName = "NTPv5WithoutAnAeadRecord_IsABadRequest_OverSsh")]
+    public async Task NTPv5WithoutAnAeadRecord_IsABadRequest(NtsKeTransport Transport)
     {
 
-        var exchange = await OverTls(Server,
-                                     RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft),
-                                     DraftRecord(),
-                                     RawNtsKeRecord.EndOfMessage());
+        var exchange = await Negotiate(Server,
+                                       Transport,
+                                       RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft),
+                                       DraftRecord(),
+                                       RawNtsKeRecord.EndOfMessage());
 
         Assert.That(exchange.ErrorCode, Is.EqualTo(RawNtsKeErrorCodes.BadRequest), exchange.ToString());
 
@@ -407,17 +515,19 @@ public class NTPv5NtsTests
     /// <summary>
     /// A server that does not answer NTPv5 does not agree to it, draft named or not.
     /// </summary>
-    [Test]
-    public async Task AServerWithoutNTPv5_AgreesToNTPv4()
+    [TestCase(NtsKeTransport.Tls, TestName = "AServerWithoutNTPv5_AgreesToNTPv4_OverTls")]
+    [TestCase(NtsKeTransport.Ssh, TestName = "AServerWithoutNTPv5_AgreesToNTPv4_OverSsh")]
+    public async Task AServerWithoutNTPv5_AgreesToNTPv4(NtsKeTransport Transport)
     {
 
-        await using var withoutNTPv5 = await NornServerFixture.StartAsync();
+        await using var withoutNTPv5 = await NornServerFixture.StartAsync(sshClientKey: ClientKey);
 
-        var exchange = await OverTls(withoutNTPv5,
-                                     RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft, RawNtsKeNextProtocols.Ntpv4),
-                                     RawNtsKeRecord.AeadAlgorithmNegotiation(15),
-                                     DraftRecord(),
-                                     RawNtsKeRecord.EndOfMessage());
+        var exchange = await Negotiate(withoutNTPv5,
+                                       Transport,
+                                       RawNtsKeRecord.NextProtocolNegotiation(RawNtsKeNextProtocols.Ntpv5Draft, RawNtsKeNextProtocols.Ntpv4),
+                                       RawNtsKeRecord.AeadAlgorithmNegotiation(15),
+                                       DraftRecord(),
+                                       RawNtsKeRecord.EndOfMessage());
 
         Assert.Multiple(() => {
             Assert.That(exchange.ErrorCode,       Is.Null,                                           $"an Error record\n{exchange}");
@@ -427,6 +537,7 @@ public class NTPv5NtsTests
     }
 
     #endregion
+
 
     #region The keys (RFC 8915 § 5.1)
 

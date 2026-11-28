@@ -216,12 +216,16 @@ public sealed class NornServerFixture : IAsyncDisposable
     /// makes it speak chrony's older dialect on purpose, which is the only way to reach that
     /// derivation deliberately.
     /// </param>
+    /// <param name="ntpv5">
+    /// Whether the client's key exchange offers NTPv5, before NTPv4 and naming its draft.
+    /// </param>
     public NTSClient CreateClient(TimeSpan?      timeout          = null,
                                   TimeProvider?  timeProvider     = null,
                                   Boolean        interleavedMode  = false,
                                   IEnumerable<AEADAlgorithms>? aeadAlgorithms = null,
                                   Boolean        compliantExporterContext = true,
-                                  NTSCookiePoolPolicy? cookiePoolPolicy = null)
+                                  NTSCookiePoolPolicy? cookiePoolPolicy = null,
+                                  NTPv5Support   ntpv5            = NTPv5Support.Disabled)
 
         => new (DomainName.Localhost,
                 NTSKE_Port:                  NTSKEPort,
@@ -234,7 +238,9 @@ public sealed class NornServerFixture : IAsyncDisposable
                 CookiePoolPolicy:            cookiePoolPolicy,
                 OfferedAEADAlgorithms:       aeadAlgorithms,
                 CompliantAES128GCMSIVExporterContext: compliantExporterContext,
-                TimeProvider:                timeProvider);
+                TimeProvider:                timeProvider) {
+               NTPv5 = ntpv5
+           };
 
 
     /// <summary>

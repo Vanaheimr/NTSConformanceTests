@@ -296,7 +296,7 @@ NTPv5" without it, so Norn's server agrees to NTPv4 with it, and does so authent
 | §7.4 | Reference IDs: 32 entries, the server's own non-zero 56-bit ID first at 100 %, unused ones at 255 and zero; fragments from their index at the request's length; an index that does not fit ignored and padded for; the lists of two weighted sources combined, halved, duplicates summed and sorted, shares rounded up | ✅ |
 | §7.7 | Correction: 28 octets, last, the request's Delay Correction and Path ID copied to the origin fields, the server's own and Reserved zero | ✅ |
 | §7.8, §7.9 | Reference Timestamp before the request and equal to the NTPv4 one; Monotonic Receive Timestamp keeping its epoch and advancing as the receive timestamps do | ✅ |
-| §11 | NTS-KE: NTPv5 (`0x8001`) agreed only for a client naming exactly this draft in record `0x4001`, NTPv4 otherwise and nothing for NTPv5 alone; the record not echoed, and no Bad Request for it with NTPv4 alone; an AEAD record required | ✅ |
+| §11, RFC 8915 §4.1.2 | NTS-KE, over TLS and over SSH alike: NTPv5 (`0x8001`) agreed only for a client naming exactly this draft in record `0x4001`, NTPv4 otherwise and nothing for NTPv5 alone; of both offered the client's first, one protocol alone — Norn's reading of an order the RFC gives no meaning — and over SSH the cookies good in the protocol agreed; the record not echoed, and no Bad Request for it with NTPv4 alone; an AEAD record required | ✅ |
 | §11, RFC 8915 §5.1 | The exporter context of NTPv5 that of NTPv4, `0x0000`, Norn's and the suite's; keys derived here under it authenticating both ways for algorithms 15, 30 and 31, from the Transported Secret and from the SSH Exporter, and the keys of `0x8001` (SSH Key Binding 1.1) of the same exchange not | ✅ |
 | §11, RFC 8915 §5.7 | The response authenticated over everything before its authenticator, the Unique Identifier echoed, as long as the request; one cookie for the one spent and one per placeholder, none for a placeholder of another length; the new cookies good for the next request | ✅ |
 | §6, §7.3, §11 | A request whose NTS fails (authenticator, a short or missing Unique Identifier, two cookies or authenticators, an NTS field after the authenticator, a foreign cookie) dropped; answered with the Authentication NAK flag, stratum 0, no timestamps and no authenticator only where it set the flag | ✅ |
@@ -315,7 +315,8 @@ only a client that ignored the first and kept waiting measures 10 s, as §9 step
 ignore all invalid responses and accept only the first valid response"). Each check was taken
 out of Norn in turn, and 20 of 23 removals failed a test. Three did not because they change
 nothing: a flag the client does not know is one it did not set, a correction too big to be
-represented makes delay_c negative, and the §12 echo is checked twice.
+represented makes delay_c negative, and the §12 echo is checked twice. Of the key exchange
+for NTPv5, ten checks of client and server were taken out the same way, and each failed a test.
 
 | Draft | Focus — Norn as NTPv5 client | |
 |---|---|:--:|
@@ -329,6 +330,9 @@ represented makes delay_c negative, and the §12 echo is checked twice.
 | §8, §9 | Offset and delay of the four timestamps; the era expanded, in 2036 and for a transmit timestamp across the rollover; corrections applied as §8 has them, with frequency error and frame times, and not where Co, Cd or delay_c is negative, where one is too big to be represented, where none was asked for — and applied after the authenticator under NTS | ✅ |
 | §6, §9 | The poll field: no request before its interval, none at all after 127 (also at stratum 0), and an absurd one followed no further than 2^18 s | ✅ |
 | §12 | Negotiation: NTPv4 first with "NTP5DRFT" in the reference timestamp, NTPv5 after its echo and not after "NTP5NTP5" or none, back to NTPv4 after two unanswered NTPv5 requests and not after one, the magic not followed while sticking with NTPv4, and advertised again after | ✅ |
+| §11, RFC 8915 §4.1.2 | The key exchange, over TLS and over SSH: NTPv5 offered before NTPv4 in one critical record, the draft named in record `0x4001`, not critical and unterminated; NTPv4 alone and no draft without NTPv5. NTPv5 proceeded with where it is among what was agreed, alone or beside NTPv4 in either order, NTPv4 where it is not; nothing agreed, a protocol not offered — alone or beside one that was — and NTPv5 to a client that did not offer it refused; an echoed `0x4001` ignored | ✅ |
+| §11, SSH Key Binding 1.2 §5.4 | Over SSH the keys of NTPv5 those of NTPv4's context `0x0000`, from the Transported Secret and from the SSH Exporter, not those of `0x8001`; and taken for NTPv5: a scripted server that answers only a request under the keys derived here, and seals under them, is queried and authenticated | ✅ |
+| §11 | Against Norn's server: NTPv5 agreed and two authenticated NTPv5 queries, over TLS and over SSH with either method; NTPv4 for a client or a server without NTPv5, its NTPv4 query authenticated and an NTPv5 query refused before it is sent | ✅ |
 
 ### The command line
 
