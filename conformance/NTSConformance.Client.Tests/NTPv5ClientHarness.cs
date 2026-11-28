@@ -129,7 +129,8 @@ internal sealed class NTPv5ClientHarness : IAsyncDisposable
                                         Boolean                                                       RequestCorrection      = false,
                                         NTPServerAccessState?                                         AccessState            = null,
                                         NTPv5UsabilityLimits?   Limits                 = null,
-                                        NTPv5CorrectionParameters? CorrectionParameters = null)
+                                        NTPv5CorrectionParameters? CorrectionParameters = null,
+                                        IEnumerable<NTPv5ExtensionField>? ExtensionFields = null)
 
         => Client.QueryNTPv5(Timeout:               Timeout ?? TimeSpan.FromSeconds(2),
                              NTSKEResponse:         NTS ? KeyExchange : null,
@@ -138,7 +139,8 @@ internal sealed class NTPv5ClientHarness : IAsyncDisposable
                              RequestCorrection:     RequestCorrection,
                              AccessState:           AccessState,
                              Limits:                Limits,
-                             CorrectionParameters:  CorrectionParameters);
+                             CorrectionParameters:  CorrectionParameters,
+                             ExtensionFields:       ExtensionFields);
 
     #endregion
 

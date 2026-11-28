@@ -317,8 +317,8 @@ ignore all invalid responses and accept only the first valid response"). Each ch
 out of Norn in turn, and 20 of 23 removals failed a test. Three did not because they change
 nothing: a flag the client does not know is one it did not set, a correction too big to be
 represented makes delay_c negative, and the §12 echo is checked twice. Of the key exchange
-for NTPv5, ten checks of client and server were taken out the same way, and of the interleaved
-mode seven; each failed a test.
+for NTPv5, ten checks of client and server were taken out the same way, of the interleaved
+mode seven, and of the fields a response brings nine; each failed a test.
 
 | Draft | Focus — Norn as NTPv5 client | |
 |---|---|:--:|
@@ -331,6 +331,7 @@ mode seven; each failed a test.
 | §9 | Usable only when synchronized, of stratum 1 to 15 or a configured maximum, root delay and dispersion within their maximum and not infinite, the timescale asked for and both timestamps set | ✅ |
 | §8, §9 | Offset and delay of the four timestamps; the era expanded, in 2036 and for a transmit timestamp across the rollover; corrections applied as §8 has them, with frequency error and frame times, and not where Co, Cd or delay_c is negative, where one is too big to be represented, where none was asked for — and applied after the authenticator under NTS | ✅ |
 | §6, §9 | The poll field: no request before its interval, none at all after 127 (also at stratum 0), and an absurd one followed no further than 2^18 s | ✅ |
+| §7.4–§7.6, §7.10, §9 | The fields a response brings: the client's own reference ID in the server's list a loop at any share and the response not usable, none without it or without the list, entries that are not 8 octets not read; time sources of all four kinds read with share, flag, address or code, an empty list as none, and a list with a source past the end or an identifier of the wrong length not taken at all; Server Information of 8 octets alone; the offset of TAI as exactly 37 s from the two timestamps and their eras, also across the rollover, and no time or offset for a timestamp of zero or a timescale not answered | ✅ |
 | §8, §9 | Interleaved mode, as in Figure 15: the flag and a zero server cookie first, then the cookie of the last valid response and not of an ignored one, zero again after too many missed responses, none in the basic mode; an interleaved response measured with the previous exchange's T1, T2 and T4 and its accurate T3, also across a lost response and under NTS; a basic response to an interleaved request measured on its own; an interleaved answer with no exchange held for it measuring nothing | ✅ |
 | §12 | Negotiation: NTPv4 first with "NTP5DRFT" in the reference timestamp, NTPv5 after its echo and not after "NTP5NTP5" or none, back to NTPv4 after two unanswered NTPv5 requests and not after one, the magic not followed while sticking with NTPv4, and advertised again after | ✅ |
 | §11, RFC 8915 §4.1.2 | The key exchange, over TLS and over SSH: NTPv5 offered before NTPv4 in one critical record, the draft named in record `0x4001`, not critical and unterminated; NTPv4 alone and no draft without NTPv5. NTPv5 proceeded with where it is among what was agreed, alone or beside NTPv4 in either order, NTPv4 where it is not; nothing agreed, a protocol not offered — alone or beside one that was — and NTPv5 to a client that did not offer it refused; an echoed `0x4001` ignored | ✅ |
