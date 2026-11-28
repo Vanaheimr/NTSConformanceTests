@@ -281,7 +281,9 @@ answering in NTPv4.
 | §6, §7.3, §11 | A request whose NTS fails (authenticator, a short or missing Unique Identifier, two cookies or authenticators, an NTS field after the authenticator, a foreign cookie) dropped; answered with the Authentication NAK flag, stratum 0, no timestamps and no authenticator only where it set the flag | ✅ |
 | §11, RFC 8915 §6 | An NTPv4 cookie refused in NTPv5, an NTPv5 cookie answered with an NTS NAK in NTPv4 | ✅ |
 | §7.7, §11 | A Correction after the authenticator answered after the response's authenticator; any other field after it not answered; a server of NTS alone dropping plain NTPv5; `AuthenticatedOnly` interleaving NTS alone | ✅ |
-| §7.5, §7.10, §7.3 | Time Sources, Secondary Receive Timestamp, MAC | — |
+| §7.5 | Time Sources: every source with its share encoded as in §7.4, its Authenticated flag, and the identifier of its kind at that kind's length (none, IPv4, IPv6, reference ID); fragments from their index, no longer than the request and skipping no source to fit a shorter one; an index that is no source answered with an empty field; not answered where not enabled, and padded for; a request shorter than 20 octets of data or not divisible by 4 not answered with it | ✅ |
+| §7.10 | Secondary Receive Timestamp: 16 octets, in UTC the header's own era and receive timestamp, in TAI exactly 37 s later, zero for a timescale supported without a value, an unsupported timescale ignored and padded for, every supported one of several requested answered once | ✅ |
+| §7.3 | MAC | — |
 
 ### The command line
 
@@ -343,8 +345,8 @@ Deliberately not covered, and why:
 - **The rest of NTPv5** — `draft-ietf-ntp-ntpv5-10` (October 2026), Standards Track
   and still moving: -10 alone dropped leap-second announcements, redefined the clock status
   flag and the Time32 format, and replaced the reference-ID Bloom filter. What Norn answers of
-  it is tested [above](#ntpv5--draft-ietf-ntp-ntpv5-10), pinned to -10; Time Sources, the
-  Secondary Receive Timestamp and the MAC wait for Norn to do them.
+  it is tested [above](#ntpv5--draft-ietf-ntp-ntpv5-10), pinned to -10; only the MAC waits
+  for Norn to do it.
 - **RFC 10049 Roughtime** — October 2026, Experimental. A different protocol with a different
   goal: rough time from servers you need not trust individually, on its own port (5319) with
   its own messages, and neither NTP packets nor NTS-KE anywhere in it. Its one point of

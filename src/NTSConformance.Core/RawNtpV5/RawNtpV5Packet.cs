@@ -358,8 +358,8 @@ public static class RawUdpExchange
 
 
 /// <summary>
-/// The extension fields of draft -10 that carry data of their own, as § 7.4 and § 7.7 to § 7.9
-/// lay them out: requests to send, and readers of what comes back.
+/// The extension fields of draft -10 that carry data of their own, as § 7.4, § 7.5 and § 7.7 to
+/// § 7.10 lay them out: requests to send, and readers of what comes back.
 /// </summary>
 public static class RawNtpV5Fields
 {
@@ -469,6 +469,101 @@ public static class RawNtpV5Fields
     public static (UInt32 EpochId, UInt64 Timestamp) ReadMonotonicReceiveTimestamp(RawNtpV5ExtensionField Field)
         => (BinaryPrimitives.ReadUInt32BigEndian(Field.Data),
             BinaryPrimitives.ReadUInt64BigEndian(Field.Data.AsSpan(4)));
+
+    #endregion
+
+    #region § 7.5 Time Sources
+
+    /// <summary>
+    /// § 7.5: a Time Sources Request for the sources from Index on. The data is the index and
+    /// then padding; "1 plus padding length" MUST be at least 20 octets and divisible by 4 -
+    /// which this writer does not check, so that a test can send one that is not.
+    /// </summary>
+    public static RawNtpV5ExtensionField TimeSourcesRequest(Byte Index, Int32 DataLength = 20)
+    {
+        var data = new Byte[DataLength];
+        data[0]  = Index;
+        return new (RawNtpV5Draft.TimeSourcesRequest, data);
+    }
+
+    /// <summary>
+    /// § 7.5: the entries of a Time Sources Response - Share (8), Flags (8), IdType (8),
+    /// Length (8), then the identifier of that length. Null where an entry runs past the end.
+    /// </summary>
+    public static IReadOnlyList<(Byte Share, Byte Flags, Byte IdType, Byte[] Identifier)>? TimeSources(RawNtpV5ExtensionField Response)
+    {
+
+        var entries = new List<(Byte, Byte, Byte, Byte[])>();
+        var data    = Response.Data;
+        var offset  = 0;
+
+        while (offset < data.Length)
+        {
+
+            if (offset + 4 > data.Length || offset + 4 + data[offset + 3] > data.Length)
+                return null;
+
+            entries.Add((data[offset], data[offset + 1], data[offset + 2], data.AsSpan(offset + 4, data[offset + 3]).ToArray()));
+
+            offset += 4 + data[offset + 3];
+
+        }
+
+        return entries;
+
+    }
+
+    /// <summary>
+    /// § 7.5: the flag of an authenticated source.
+    /// </summary>
+    public const Byte TimeSourceAuthenticated = 0x1;
+
+    /// <summary>
+    /// § 7.5: the kinds of identifier, and the length each has.
+    /// </summary>
+    public const Byte TimeSourceNone       = 0;
+    public const Byte TimeSourceIPv4       = 1;
+    public const Byte TimeSourceIPv6       = 2;
+    public const Byte TimeSourceRefId      = 3;
+
+    #endregion
+
+    #region § 7.10 Secondary Receive Timestamp
+
+    /// <summary>
+    /// § 7.10: 16 octets - Timescale (8), Era (8), Reserved (16), Secondary Receive Timestamp
+    /// (64). In a request the Timescale selects the timescale and "the other data fields ... MUST
+    /// be set to 0".
+    /// </summary>
+    public static RawNtpV5ExtensionField SecondaryReceiveTimestampRequest(Byte    Timescale,
+                                                                          Byte    Era        = 0,
+                                                                          UInt16  Reserved   = 0,
+                                                                          UInt64  Timestamp  = 0)
+    {
+
+        var data = new Byte[12];
+        var span = data.AsSpan();
+
+        span[0] = Timescale;
+        span[1] = Era;
+        BinaryPrimitives.WriteUInt16BigEndian(span[2..], Reserved);
+        BinaryPrimitives.WriteUInt64BigEndian(span[4..], Timestamp);
+
+        return new (RawNtpV5Draft.SecondaryReceiveTimestamp, data);
+
+    }
+
+    public static (Byte Timescale, Byte Era, UInt16 Reserved, UInt64 Timestamp) ReadSecondaryReceiveTimestamp(RawNtpV5ExtensionField Field)
+        => (Field.Data[0],
+            Field.Data[1],
+            BinaryPrimitives.ReadUInt16BigEndian(Field.Data.AsSpan(2)),
+            BinaryPrimitives.ReadUInt64BigEndian(Field.Data.AsSpan(4)));
+
+    /// <summary>
+    /// An era and a timestamp64 as one number of 2^-32 s since the start of era 0.
+    /// </summary>
+    public static Int128 Continuous(Byte Era, UInt64 Timestamp)
+        => ((Int128) Era << 64) | Timestamp;
 
     #endregion
 
