@@ -142,6 +142,12 @@ public class InterleavedTimestampStoreTests
     /// puts it an order of magnitude clear, while a constant-time implementation stays at one
     /// whatever the machine is doing.
     /// </para>
+    /// <para>
+    /// Each size is measured five times, alternately, and the fastest run counts: one run is a
+    /// few milliseconds, which a garbage collection or a descheduled thread can double, and the
+    /// fastest of five is the run nothing got in the way of. The rate limiter's test of the same
+    /// shape measured 5.3 once on a CI runner with a single run each.
+    /// </para>
     /// </summary>
     [Test]
     [Category(TestCategories.Slow)]
@@ -172,8 +178,13 @@ public class InterleavedTimestampStoreTests
         // Warm up, so JIT compilation does not land inside the first measurement.
         InsertionsPerSecond(64);
 
-        var small = InsertionsPerSecond(256);
-        var large = InsertionsPerSecond(16384);
+        Double small = 0, large = 0;
+
+        for (var round = 0; round < 5; round++)
+        {
+            small = Math.Max(small, InsertionsPerSecond(256));
+            large = Math.Max(large, InsertionsPerSecond(16384));
+        }
 
         Assert.That(small / large,
                     Is.LessThan(4.0),

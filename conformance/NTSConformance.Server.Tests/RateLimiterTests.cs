@@ -517,6 +517,13 @@ public class RateLimiterTests
     /// per-entry cost is not constant across those sizes — which left almost no daylight above a
     /// threshold that also has to sit above scheduling noise. At sixty-four times the table a
     /// scan is an order of magnitude, and a constant-time implementation is still one.
+    ///
+    /// Each size is measured five times, alternately, and the fastest run counts. One run of
+    /// 20,000 checks is a few milliseconds, which a garbage collection or a descheduled thread
+    /// can double; on a shared CI runner a constant-time limiter measured 5.3 once. The fastest of
+    /// five is the run nothing got in the way of. Measured on 2026-11-28, as the fastest of five:
+    /// the limiter as it is, 1.2 to 1.8; a scan of its shard on every eviction, 4.2 to 6.5; a scan
+    /// of the whole table, 62 to 120. A single run had spread the first from 0.9 to 5.1.
     /// </remarks>
     [Test]
     [Category(TestCategories.Slow)]
@@ -548,8 +555,13 @@ public class RateLimiterTests
         // Warm up, so JIT compilation does not land inside the first measurement.
         ChecksPerSecond(64);
 
-        var small = ChecksPerSecond(256);
-        var large = ChecksPerSecond(16384);
+        Double small = 0, large = 0;
+
+        for (var round = 0; round < 5; round++)
+        {
+            small = Math.Max(small, ChecksPerSecond(256));
+            large = Math.Max(large, ChecksPerSecond(16384));
+        }
 
         Assert.That(small / large,
                     Is.LessThan(4.0),
